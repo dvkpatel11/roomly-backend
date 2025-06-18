@@ -86,7 +86,3 @@ class HouseholdSummary(BaseModel):
     joined_at: datetime
 
 
-class HouseholdRole(str, Enum):
-    ADMIN = "admin"
-    MEMBER = "member"
-    GUEST = "guest"

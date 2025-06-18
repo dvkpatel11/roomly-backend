@@ -1,6 +1,7 @@
 from .user import User
 from .household import Household
-from .expense import Expense
+from .household_membership import HouseholdMembership
+from .expense import Expense, ExpensePayment
 from .bill import Bill, BillPayment
 from .task import Task
 from .event import Event

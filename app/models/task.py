@@ -1,4 +1,4 @@
-from app.schemas.task import TaskStatus
+from app.models.enums import TaskStatus
 from sqlalchemy import (
     Column,
     Integer,

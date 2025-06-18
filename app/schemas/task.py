@@ -3,11 +3,8 @@ from typing import Optional
 from datetime import datetime
 from enum import Enum
 
-class TaskStatus(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    OVERDUE = "overdue"
+from app.models.enums import TaskStatus
+
 
 class TaskPriority(str, Enum):
     LOW = "low"
@@ -15,32 +12,38 @@ class TaskPriority(str, Enum):
     HIGH = "high"
     URGENT = "urgent"
 
+
 class RecurrencePattern(str, Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
     MONTHLY = "monthly"
 
+
 class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     priority: TaskPriority = TaskPriority.NORMAL
-    estimated_duration: Optional[int] = Field(None, gt=0, description="Duration in minutes")
+    estimated_duration: Optional[int] = Field(
+        None, gt=0, description="Duration in minutes"
+    )
     points: int = Field(10, ge=1, le=100, description="Points for completion")
-    
+
+
 class TaskCreate(TaskBase):
     assigned_to: int
     due_date: Optional[datetime] = None
     recurring: bool = False
     recurrence_pattern: Optional[RecurrencePattern] = None
-    
-    @validator('recurrence_pattern')
+
+    @validator("recurrence_pattern")
     def validate_recurrence(cls, v, values):
-        if values.get('recurring') and not v:
-            raise ValueError('Recurrence pattern required for recurring tasks')
-        if not values.get('recurring') and v:
-            raise ValueError('Recurrence pattern only valid for recurring tasks')
+        if values.get("recurring") and not v:
+            raise ValueError("Recurrence pattern required for recurring tasks")
+        if not values.get("recurring") and v:
+            raise ValueError("Recurrence pattern only valid for recurring tasks")
         return v
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -51,10 +54,14 @@ class TaskUpdate(BaseModel):
     estimated_duration: Optional[int] = Field(None, gt=0)
     points: Optional[int] = Field(None, ge=1, le=100)
 
+
 class TaskComplete(BaseModel):
     completion_notes: Optional[str] = Field(None, max_length=300)
     photo_proof_url: Optional[str] = None
-    actual_duration: Optional[int] = Field(None, gt=0, description="Actual duration in minutes")
+    actual_duration: Optional[int] = Field(
+        None, gt=0, description="Actual duration in minutes"
+    )
+
 
 class TaskResponse(TaskBase):
     id: int
@@ -71,9 +78,10 @@ class TaskResponse(TaskBase):
     completion_notes: Optional[str]
     photo_proof_url: Optional[str]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
+
 
 class TaskLeaderboard(BaseModel):
     user_id: int

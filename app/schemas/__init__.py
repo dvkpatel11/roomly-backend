@@ -25,7 +25,6 @@ from .task import (
     TaskComplete,
     TaskResponse,
     TaskLeaderboard,
-    TaskStatus,
     TaskPriority,
     RecurrencePattern,
 )
@@ -128,7 +127,6 @@ __all__ = [
     "TaskComplete",
     "TaskResponse",
     "TaskLeaderboard",
-    "TaskStatus",
     "TaskPriority",
     "RecurrencePattern",
     # Event schemas

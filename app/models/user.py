@@ -1,4 +1,4 @@
-from app.schemas.household import HouseholdRole
+from app.models.enums import HouseholdRole
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

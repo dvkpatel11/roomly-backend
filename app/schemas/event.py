@@ -3,6 +3,8 @@ from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
+from app.models.enums import EventStatus
+
 
 class EventType(str, Enum):
     PARTY = "party"
@@ -13,13 +15,6 @@ class EventType(str, Enum):
     DINNER = "dinner"
     GAME_NIGHT = "game_night"
     OTHER = "other"
-
-
-class EventStatus(str, Enum):
-    PENDING = "pending_approval"
-    PUBLISHED = "published"
-    CANCELLED = "cancelled"
-    COMPLETED = "completed"
 
 
 class EventBase(BaseModel):
