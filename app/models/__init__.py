@@ -12,9 +12,25 @@ from .rsvp import RSVP
 from .user_schedule import UserSchedule
 from .shopping_list import ShoppingList, ShoppingItem
 
+
 __all__ = [
-    "User", "Household", "Expense", "Bill", "BillPayment", 
-    "Task", "Event", "Guest", "Announcement", "Poll", "PollVote",
-    "Notification", "NotificationPreference", "RSVP", "UserSchedule", 
-    "ShoppingList", "ShoppingItem"
+    "User",
+    "Household",
+    "HouseholdMembership",
+    "Expense",
+    "ExpensePayment",
+    "Bill",
+    "BillPayment",
+    "Task",
+    "Event",
+    "Guest",
+    "Announcement",
+    "Poll",
+    "PollVote",
+    "Notification",
+    "NotificationPreference",
+    "RSVP",
+    "UserSchedule",
+    "ShoppingList",
+    "ShoppingItem",
 ]

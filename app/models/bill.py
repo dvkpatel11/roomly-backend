@@ -26,6 +26,7 @@ class Bill(Base):
     split_method = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     notes = Column(Text)
+    split_details = Column(JSON)
 
     # Foreign Keys
     household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
@@ -41,7 +42,6 @@ class Bill(Base):
         "User", back_populates="created_bills", foreign_keys=[created_by]
     )
     payments = relationship("BillPayment", back_populates="bill")
-    split_details = Column(JSON)
 
     __table_args__ = (
         Index("idx_bill_household_active", "household_id", "is_active"),

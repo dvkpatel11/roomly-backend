@@ -23,7 +23,6 @@ class Task(Base):
     priority = Column(String, default="normal")  # low, normal, high, urgent
     estimated_duration = Column(Integer)  # Duration in minutes
     points = Column(Integer, default=10)
-    completed = Column(Boolean, default=False)
     recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)  # daily, weekly, monthly
     completion_notes = Column(Text)

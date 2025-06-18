@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from ..database import Base
 from sqlalchemy import Index
+from sqlalchemy.orm import relationship
 
 
 class HouseholdMembership(Base):
@@ -15,6 +16,9 @@ class HouseholdMembership(Base):
     is_active = Column(Boolean, default=True)
 
     # Unique constraint
+    user = relationship("User", back_populates="household_memberships")
+    household = relationship("Household", back_populates="memberships")
+
     __table_args__ = (
         Index("idx_unique_household_member", "user_id", "household_id", unique=True),
     )

@@ -16,12 +16,12 @@ class User(Base):
     household_id = Column(Integer, ForeignKey("households.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    household_role = Column(String, default="member")  # admin, member
     phone = Column(String)
+    household_role = Column(String, default=HouseholdRole.MEMBER.value)
 
     # Relationships
     household = relationship("Household", back_populates="members")
-    household_role = Column(String, default=HouseholdRole.MEMBER.value)
+    household_memberships = relationship("HouseholdMembership", back_populates="user")
 
     # Expenses
     created_expenses = relationship(
@@ -85,3 +85,4 @@ class User(Base):
         foreign_keys="ShoppingList.assigned_shopper",
     )
     requested_shopping_items = relationship("ShoppingItem", back_populates="requester")
+    expense_payments = relationship("ExpensePayment", back_populates="user")

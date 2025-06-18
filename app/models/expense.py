@@ -58,4 +58,4 @@ class ExpensePayment(Base):
 
     # Relationships
     expense = relationship("Expense", back_populates="payments")
-    user = relationship("User")
+    user = relationship("User", back_populates="expense_payments")
