@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, date
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 from dateutil.relativedelta import relativedelta
 import calendar
 from enum import Enum

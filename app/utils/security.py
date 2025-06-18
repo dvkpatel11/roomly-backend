@@ -38,3 +38,4 @@ def get_current_user(
     # This function is now in routers/auth.py to avoid circular imports
     from .routers.auth import get_current_user as auth_get_current_user
     return auth_get_current_user(credentials, db)
+

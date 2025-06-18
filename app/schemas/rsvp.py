@@ -1,12 +1,14 @@
 from pydantic import BaseModel, validator, Field
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from enum import Enum
+
 
 class RSVPStatus(str, Enum):
     YES = "yes"
     NO = "no"
     MAYBE = "maybe"
+
 
 class RSVPBase(BaseModel):
     status: RSVPStatus
@@ -15,8 +17,10 @@ class RSVPBase(BaseModel):
     special_requests: Optional[str] = Field(None, max_length=300)
     response_notes: Optional[str] = Field(None, max_length=500)
 
+
 class RSVPCreate(RSVPBase):
     event_id: int
+
 
 class RSVPUpdate(BaseModel):
     status: Optional[RSVPStatus] = None
@@ -24,6 +28,7 @@ class RSVPUpdate(BaseModel):
     dietary_restrictions: Optional[str] = Field(None, max_length=300)
     special_requests: Optional[str] = Field(None, max_length=300)
     response_notes: Optional[str] = Field(None, max_length=500)
+
 
 class RSVPResponse(RSVPBase):
     id: int
@@ -33,9 +38,10 @@ class RSVPResponse(RSVPBase):
     user_name: str
     created_at: datetime
     updated_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
+
 
 class EventRSVPSummary(BaseModel):
     event_id: int
@@ -46,6 +52,7 @@ class EventRSVPSummary(BaseModel):
     maybe_count: int
     total_guests: int
     responses: List[RSVPResponse]
+
 
 class UserRSVPSummary(BaseModel):
     user_id: int

@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+
 
 class NotificationType(str, Enum):
     BILL_DUE = "bill_due"
@@ -15,11 +16,13 @@ class NotificationType(str, Enum):
     POLL_CREATED = "poll_created"
     SYSTEM = "system"
 
+
 class NotificationPriority(str, Enum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
     URGENT = "urgent"
+
 
 class NotificationBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -28,10 +31,12 @@ class NotificationBase(BaseModel):
     priority: NotificationPriority = NotificationPriority.NORMAL
     action_url: Optional[str] = None
 
+
 class NotificationCreate(NotificationBase):
     user_id: int
     related_entity_type: Optional[str] = None
     related_entity_id: Optional[int] = None
+
 
 class NotificationResponse(NotificationBase):
     id: int
@@ -45,9 +50,10 @@ class NotificationResponse(NotificationBase):
     related_entity_id: Optional[int]
     created_at: datetime
     read_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
+
 
 class NotificationPreferences(BaseModel):
     bill_reminders_email: bool = True
@@ -63,6 +69,7 @@ class NotificationPreferences(BaseModel):
     expense_updates_email: bool = False
     expense_updates_push: bool = True
 
+
 class NotificationPreferencesUpdate(BaseModel):
     bill_reminders_email: Optional[bool] = None
     bill_reminders_push: Optional[bool] = None
@@ -76,6 +83,7 @@ class NotificationPreferencesUpdate(BaseModel):
     guest_requests_push: Optional[bool] = None
     expense_updates_email: Optional[bool] = None
     expense_updates_push: Optional[bool] = None
+
 
 class NotificationSummary(BaseModel):
     unread_count: int

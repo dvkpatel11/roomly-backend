@@ -8,18 +8,24 @@ import uvicorn
 import os
 import sys
 
-# Add current directory to path
-sys.path.insert(0, os.getcwd())
-
 if __name__ == "__main__":
-    # Change to app directory
-    os.chdir("app")
-    
-    # Start uvicorn
+    # Ensure we're in the project root directory
+    # (where this script is located)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(script_dir)
+
+    # Add project root to Python path
+    sys.path.insert(0, script_dir)
+
+    print(f"🚀 Starting Roomly API from: {script_dir}")
+    print("📡 Server will be available at: http://localhost:8000")
+    print("📄 API docs will be available at: http://localhost:8000/docs")
+
+    # Start uvicorn with the app module
     uvicorn.run(
-        "main:app", 
-        host="0.0.0.0", 
-        port=8000, 
+        "app.main:app",  # Note: app.main, not just main
+        host="0.0.0.0",
+        port=8000,
         reload=True,
-        reload_dirs=["./"]
+        reload_dirs=["./app"],  # Only watch the app directory
     )
