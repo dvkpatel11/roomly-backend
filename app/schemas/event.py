@@ -3,6 +3,7 @@ from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
+
 class EventType(str, Enum):
     PARTY = "party"
     MAINTENANCE = "maintenance"
@@ -13,11 +14,13 @@ class EventType(str, Enum):
     GAME_NIGHT = "game_night"
     OTHER = "other"
 
+
 class EventStatus(str, Enum):
-    DRAFT = "draft"
+    PENDING = "pending_approval"
     PUBLISHED = "published"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
+
 
 class EventBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -28,15 +31,17 @@ class EventBase(BaseModel):
     is_public: bool = True
     requires_approval: bool = False
 
+
 class EventCreate(EventBase):
     start_date: datetime
     end_date: Optional[datetime] = None
-    
-    @validator('end_date')
+
+    @validator("end_date")
     def end_after_start(cls, v, values):
-        if v and 'start_date' in values and v <= values['start_date']:
-            raise ValueError('End date must be after start date')
+        if v and "start_date" in values and v <= values["start_date"]:
+            raise ValueError("End date must be after start date")
         return v
+
 
 class EventUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -49,6 +54,7 @@ class EventUpdate(BaseModel):
     is_public: Optional[bool] = None
     requires_approval: Optional[bool] = None
     status: Optional[EventStatus] = None
+
 
 class EventResponse(EventBase):
     id: int
@@ -63,9 +69,10 @@ class EventResponse(EventBase):
     rsvp_no: int
     rsvp_maybe: int
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
+
 
 class EventSummary(BaseModel):
     id: int

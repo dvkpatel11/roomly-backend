@@ -1,16 +1,17 @@
 from enum import Enum
 
+
 # Application Constants
 class AppConstants:
     # Pagination
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 100
-    
+
     # File Upload (when implemented)
     MAX_FILE_SIZE_MB = 10
-    ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
-    ALLOWED_DOCUMENT_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt']
-    
+    ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+    ALLOWED_DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"]
+
     # Validation Limits
     MAX_HOUSEHOLD_MEMBERS = 10
     MAX_EXPENSE_AMOUNT = 10000.00
@@ -18,22 +19,23 @@ class AppConstants:
     MIN_TASK_POINTS = 1
     MAX_GUEST_DAYS = 30
     MAX_SHOPPING_ITEMS = 100
-    
+
     # Notification Settings
     DEFAULT_BILL_REMINDER_DAYS = 3
     DEFAULT_TASK_OVERDUE_HOURS = 24
     DEFAULT_EVENT_REMINDER_HOURS = 24
     MAX_NOTIFICATION_RETRIES = 3
-    
+
     # Task System
     MONTHLY_POINT_RESET_DAY = 1  # 1st of each month
     MAX_TASK_STREAK_DAYS = 365
     DEFAULT_TASK_POINTS = 10
-    
+
     # Financial
     CURRENCY_DECIMAL_PLACES = 2
     MAX_SPLIT_PERCENTAGE = 100
     MIN_SPLIT_PERCENTAGE = 0
+
 
 # Expense Categories
 class ExpenseCategory(Enum):
@@ -47,6 +49,7 @@ class ExpenseCategory(Enum):
     TRANSPORTATION = "transportation"
     OTHER = "other"
 
+
 # Task Categories
 class TaskCategory(Enum):
     CLEANING = "cleaning"
@@ -57,6 +60,7 @@ class TaskCategory(Enum):
     YARD_WORK = "yard_work"
     ORGANIZING = "organizing"
     OTHER = "other"
+
 
 # Event Types
 class EventType(Enum):
@@ -69,6 +73,7 @@ class EventType(Enum):
     GAME_NIGHT = "game_night"
     STUDY_SESSION = "study_session"
     OTHER = "other"
+
 
 # Notification Types
 class NotificationType(Enum):
@@ -89,17 +94,20 @@ class NotificationType(Enum):
     MEMBER_JOINED = "member_joined"
     SYSTEM = "system"
 
+
 # User Roles
 class UserRole(Enum):
     ADMIN = "admin"
     MEMBER = "member"
     GUEST = "guest"
 
+
 # Bill Status
 class BillStatus(Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     CANCELLED = "cancelled"
+
 
 # Priority Levels
 class Priority(Enum):
@@ -108,6 +116,7 @@ class Priority(Enum):
     HIGH = "high"
     URGENT = "urgent"
 
+
 # RSVP Status
 class RSVPStatus(Enum):
     YES = "yes"
@@ -115,12 +124,14 @@ class RSVPStatus(Enum):
     MAYBE = "maybe"
     PENDING = "pending"
 
+
 # Split Methods
 class SplitMethod(Enum):
     EQUAL = "equal_split"
     BY_USAGE = "by_usage"
     SPECIFIC_AMOUNTS = "specific_amounts"
     PERCENTAGE = "percentage"
+
 
 # Guest Policies
 class GuestPolicy:
@@ -130,12 +141,14 @@ class GuestPolicy:
     DEFAULT_QUIET_HOURS_START = "22:00"
     DEFAULT_QUIET_HOURS_END = "08:00"
 
+
 # Task Settings
 class TaskSettings:
     DEFAULT_ROTATION_ENABLED = True
     DEFAULT_POINT_SYSTEM_ENABLED = True
     DEFAULT_PHOTO_PROOF_REQUIRED = False
     OVERDUE_REMINDER_FREQUENCY_HOURS = 12  # Twice daily
+
 
 # API Response Messages
 class Messages:
@@ -145,7 +158,7 @@ class Messages:
     SUCCESS_DELETED = "Deleted successfully"
     SUCCESS_APPROVED = "Approved successfully"
     SUCCESS_DENIED = "Denied successfully"
-    
+
     # Error Messages
     ERROR_NOT_FOUND = "Resource not found"
     ERROR_UNAUTHORIZED = "Unauthorized access"
@@ -153,7 +166,7 @@ class Messages:
     ERROR_VALIDATION = "Validation error"
     ERROR_CONFLICT = "Resource conflict"
     ERROR_SERVER = "Internal server error"
-    
+
     # Specific Messages
     EXPENSE_SPLIT_CALCULATED = "Expense split calculated successfully"
     TASK_COMPLETED = "Task marked as completed"
@@ -161,24 +174,26 @@ class Messages:
     GUEST_APPROVED_ALL = "Guest approved by all household members"
     EVENT_PUBLISHED = "Event approved and published"
 
+
 # Default Settings
 class DefaultSettings:
     # Household
     HOUSEHOLD_HEALTH_SCORE_THRESHOLD = 70
-    
+
     # Notifications
     NOTIFICATION_BATCH_SIZE = 50
     EMAIL_RATE_LIMIT_PER_HOUR = 100
-    
+
     # Dashboard
     DASHBOARD_ACTIVITY_FEED_LIMIT = 20
     DASHBOARD_UPCOMING_ITEMS_LIMIT = 5
-    
+
     # Leaderboard
     LEADERBOARD_TOP_N = 10
-    
+
     # Search
     SEARCH_RESULTS_LIMIT = 50
+
 
 # Error Codes
 class ErrorCodes:

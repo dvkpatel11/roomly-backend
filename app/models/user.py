@@ -1,3 +1,4 @@
+from app.schemas.household import HouseholdRole
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -15,13 +16,19 @@ class User(Base):
     household_id = Column(Integer, ForeignKey("households.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    household_role = Column(String, default="member")  # admin, member
+    phone = Column(String)
 
     # Relationships
     household = relationship("Household", back_populates="members")
+    household_role = Column(String, default=HouseholdRole.MEMBER.value)
 
     # Expenses
     created_expenses = relationship(
-        "Expense", back_populates="created_by_user", foreign_keys="Expense.created_by"
+        "Expense",
+        back_populates="created_by_user",
+        foreign_keys="Expense.created_by",
+        cascade="all, delete-orphan",
     )
 
     # Bills
