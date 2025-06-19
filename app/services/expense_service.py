@@ -1,10 +1,53 @@
 from sqlalchemy.orm import Session
-from typing import Dict, List, Any, Union
+from sqlalchemy import and_, func, desc
+from typing import Dict, List, Any, Union, Optional
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime
 from ..models.expense import Expense, ExpensePayment
 from ..models.user import User
+from ..models.household_membership import HouseholdMembership
 from ..schemas.expense import ExpenseCreate, ExpenseUpdate, SplitMethod
-from datetime import datetime
+from dataclasses import dataclass
+
+
+# Custom Exceptions
+class ExpenseServiceError(Exception):
+    """Base exception for expense service errors"""
+
+    pass
+
+
+class ExpenseNotFoundError(ExpenseServiceError):
+    """Expense not found"""
+
+    pass
+
+
+class PermissionDeniedError(ExpenseServiceError):
+    """Permission denied for operation"""
+
+    pass
+
+
+class BusinessRuleViolationError(ExpenseServiceError):
+    """Business rule violation (e.g., invalid splits)"""
+
+    pass
+
+
+class PaymentValidationError(ExpenseServiceError):
+    """Payment validation error"""
+
+    pass
+
+
+# Remove the schema import, add this at top of file:
+@dataclass
+class HouseholdMember:
+    id: int
+    name: str
+    email: str
+    role: str
 
 
 class ExpenseService:
@@ -23,75 +66,232 @@ class ExpenseService:
         custom_splits: {user_id: amount_or_percentage}
         """
 
-        # Create the expense
-        expense = Expense(
-            description=expense_data.description,
-            amount=expense_data.amount,
-            category=expense_data.category.value,
-            split_method=expense_data.split_method.value,
-            receipt_url=expense_data.receipt_url,
-            notes=expense_data.notes,
-            household_id=household_id,
-            created_by=created_by,
-        )
+        # Validate permissions
+        if not self._user_can_create_expense(created_by, household_id):
+            raise PermissionDeniedError("User is not a member of this household")
 
-        # Calculate splits
+        # Get household members for split calculation
         household_members = self._get_household_members(household_id)
-        split_details = self._calculate_splits(
-            expense_data.amount,
-            expense_data.split_method,
-            household_members,
-            custom_splits or {},
+        if not household_members:
+            raise BusinessRuleViolationError("Household has no active members")
+
+        # Validate custom splits if provided
+        if custom_splits:
+            self._validate_custom_splits(
+                expense_data.amount,
+                expense_data.split_method,
+                household_members,
+                custom_splits,
+            )
+
+        try:
+            # Create the expense
+            expense = Expense(
+                description=expense_data.description,
+                amount=expense_data.amount,
+                category=expense_data.category.value,
+                split_method=expense_data.split_method.value,
+                receipt_url=expense_data.receipt_url,
+                notes=expense_data.notes,
+                household_id=household_id,
+                created_by=created_by,
+            )
+
+            # Calculate splits
+            split_details = self._calculate_splits(
+                expense_data.amount,
+                expense_data.split_method,
+                household_members,
+                custom_splits or {},
+            )
+
+            expense.split_details = split_details
+
+            self.db.add(expense)
+            self.db.commit()
+            self.db.refresh(expense)
+
+            return expense
+
+        except Exception as e:
+            self.db.rollback()
+            raise ExpenseServiceError(f"Failed to create expense: {str(e)}")
+
+    def get_household_expenses(
+        self,
+        household_id: int,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        category: str = None,
+        created_by: int = None,
+    ) -> Dict[str, Any]:
+        """Get household expenses with filtering and pagination"""
+
+        if not self._user_can_view_household_expenses(user_id, household_id):
+            raise PermissionDeniedError("User cannot view household expenses")
+
+        # Build query with filters
+        query = self.db.query(Expense).filter(Expense.household_id == household_id)
+
+        if category:
+            query = query.filter(Expense.category == category)
+
+        if created_by:
+            query = query.filter(Expense.created_by == created_by)
+
+        # Get total count for pagination
+        total_count = query.count()
+
+        # Get expenses with pagination
+        expenses = (
+            query.order_by(desc(Expense.created_at)).offset(offset).limit(limit).all()
         )
 
-        expense.split_details = split_details
+        # Enrich with creator names and payment status
+        expense_list = []
+        for expense in expenses:
+            creator = self.db.query(User).filter(User.id == expense.created_by).first()
 
-        self.db.add(expense)
-        self.db.commit()
-        self.db.refresh(expense)
+            # Calculate payment status
+            total_payments = (
+                self.db.query(func.sum(ExpensePayment.amount_paid))
+                .filter(ExpensePayment.expense_id == expense.id)
+                .scalar()
+                or 0
+            )
 
-        return expense
+            is_fully_paid = total_payments >= expense.amount - 0.01
+
+            expense_list.append(
+                {
+                    "id": expense.id,
+                    "description": expense.description,
+                    "amount": expense.amount,
+                    "category": expense.category,
+                    "created_by": expense.created_by,
+                    "created_by_name": creator.name if creator else "Unknown",
+                    "created_at": expense.created_at,
+                    "total_paid": float(total_payments),
+                    "is_fully_paid": is_fully_paid,
+                    "split_method": expense.split_method,
+                }
+            )
+
+        return {
+            "expenses": expense_list,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total_count,
+        }
+
+    def update_expense(
+        self,
+        expense_id: int,
+        expense_updates: ExpenseUpdate,
+        updated_by: int,
+        custom_splits: Dict[int, Union[float, str]] = None,
+    ) -> Expense:
+        """Update expense with permission validation"""
+
+        expense = self._get_expense_or_raise(expense_id)
+
+        # Check permissions (creator or household admin can edit)
+        if not self._user_can_edit_expense(updated_by, expense):
+            raise PermissionDeniedError(
+                "Only expense creator or household admin can edit"
+            )
+
+        # Check if expense has payments (restrict editing)
+        if self._expense_has_payments(expense_id):
+            raise BusinessRuleViolationError("Cannot edit expense that has payments")
+
+        try:
+            # Update basic fields
+            update_data = expense_updates.dict(exclude_unset=True)
+            for field, value in update_data.items():
+                if field != "split_method":  # Handle split_method separately
+                    setattr(
+                        expense,
+                        field,
+                        value.value if hasattr(value, "value") else value,
+                    )
+
+            # Recalculate splits if amount or split method changed
+            if "amount" in update_data or "split_method" in update_data:
+                household_members = self._get_household_members(expense.household_id)
+
+                split_method = expense_updates.split_method or SplitMethod(
+                    expense.split_method
+                )
+                amount = expense_updates.amount or expense.amount
+
+                expense.split_details = self._calculate_splits(
+                    amount, split_method, household_members, custom_splits or {}
+                )
+
+            expense.updated_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(expense)
+            return expense
+
+        except Exception as e:
+            self.db.rollback()
+            raise ExpenseServiceError(f"Failed to update expense: {str(e)}")
+
+    def delete_expense(self, expense_id: int, deleted_by: int) -> bool:
+        """Delete expense with proper validation"""
+
+        expense = self._get_expense_or_raise(expense_id)
+
+        if not self._user_can_edit_expense(deleted_by, expense):
+            raise PermissionDeniedError(
+                "Only expense creator or household admin can delete"
+            )
+
+        if self._expense_has_payments(expense_id):
+            raise BusinessRuleViolationError("Cannot delete expense that has payments")
+
+        try:
+            self.db.delete(expense)
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            raise ExpenseServiceError(f"Failed to delete expense: {str(e)}")
 
     def _calculate_splits(
         self,
         total_amount: float,
         split_method: SplitMethod,
-        household_members: List[User],
-        custom_splits: Dict[int, Union[float, str]] = None,
+        household_members: List[HouseholdMember],
+        custom_splits: Dict[int, Union[float, str]],
     ) -> Dict[str, Any]:
         """Calculate how expense should be split among members"""
+
+        if not household_members:
+            raise BusinessRuleViolationError(
+                "No household members to split expense among"
+            )
 
         splits = []
 
         if split_method == SplitMethod.EQUAL:
-            # Equal split among all members
-            per_person = self._round_currency(total_amount / len(household_members))
-
-            for member in household_members:
-                splits.append(
-                    {
-                        "user_id": member.id,
-                        "user_name": member.name,
-                        "amount_owed": per_person,
-                        "calculation_method": "equal",
-                        "is_paid": False,
-                    }
-                )
+            splits = self._calculate_equal_splits(total_amount, household_members)
 
         elif split_method == SplitMethod.SPECIFIC:
-            # Custom amounts or percentages specified
             splits = self._calculate_custom_splits(
                 total_amount, household_members, custom_splits
             )
 
         elif split_method == SplitMethod.BY_USAGE:
-            # Usage-based (same as custom for now)
             splits = self._calculate_custom_splits(
                 total_amount, household_members, custom_splits
             )
 
         elif split_method == SplitMethod.PERCENTAGE:
-            # Percentage-based
             splits = self._calculate_percentage_splits(
                 total_amount, household_members, custom_splits
             )
@@ -103,27 +303,33 @@ class ExpenseService:
             "splits": splits,
             "total_amount": total_amount,
             "split_method": split_method.value,
-            "calculated_at": str(datetime.utcnow()),
+            "calculated_at": datetime.utcnow().isoformat(),
             "all_paid": False,
         }
 
     def _calculate_custom_splits(
         self,
         total_amount: float,
-        household_members: List[User],
+        household_members: List[HouseholdMember],
         custom_splits: Dict[int, Union[float, str]],
     ) -> List[Dict[str, Any]]:
         """Handle custom fixed amounts"""
 
         splits = []
         remaining_amount = total_amount
-        remaining_members = []
+        specified_members = set()
 
         # First, handle members with specified amounts
         for member in household_members:
             if member.id in custom_splits:
                 amount = float(custom_splits[member.id])
+                if amount < 0:
+                    raise BusinessRuleViolationError(
+                        f"Negative amount not allowed for {member.name}"
+                    )
+
                 amount = self._round_currency(amount)
+                specified_members.add(member.id)
 
                 splits.append(
                     {
@@ -136,14 +342,18 @@ class ExpenseService:
                 )
 
                 remaining_amount -= amount
-            else:
-                remaining_members.append(member)
 
-        # Split remaining amount equally among remaining members
-        if remaining_members and remaining_amount > 0:
-            per_person = self._round_currency(remaining_amount / len(remaining_members))
+        # Split remaining amount equally among unspecified members
+        unspecified_members = [
+            m for m in household_members if m.id not in specified_members
+        ]
 
-            for member in remaining_members:
+        if unspecified_members and remaining_amount > 0:
+            per_person = self._round_currency(
+                remaining_amount / len(unspecified_members)
+            )
+
+            for member in unspecified_members:
                 splits.append(
                     {
                         "user_id": member.id,
@@ -153,29 +363,37 @@ class ExpenseService:
                         "is_paid": False,
                     }
                 )
+        elif remaining_amount < -0.01:  # Negative remaining (over-specified)
+            raise BusinessRuleViolationError(
+                "Custom amounts exceed total expense amount"
+            )
 
         return splits
 
     def _calculate_percentage_splits(
         self,
         total_amount: float,
-        household_members: List[User],
+        household_members: List[HouseholdMember],
         custom_splits: Dict[int, Union[float, str]],
     ) -> List[Dict[str, Any]]:
         """Handle percentage-based splits"""
 
         splits = []
         total_percentage = 0
+        specified_members = set()
 
         # Calculate amounts for specified percentages
         for member in household_members:
             if member.id in custom_splits:
                 percentage = float(custom_splits[member.id])
-                if percentage > 100:
-                    raise ValueError(f"Percentage cannot exceed 100% for {member.name}")
+                if percentage < 0 or percentage > 100:
+                    raise BusinessRuleViolationError(
+                        f"Percentage must be between 0-100% for {member.name}"
+                    )
 
                 amount = self._round_currency(total_amount * (percentage / 100))
                 total_percentage += percentage
+                specified_members.add(member.id)
 
                 splits.append(
                     {
@@ -188,13 +406,13 @@ class ExpenseService:
                 )
 
         if total_percentage > 100:
-            raise ValueError("Total percentages cannot exceed 100%")
+            raise BusinessRuleViolationError("Total percentages cannot exceed 100%")
 
         # Handle remaining percentage equally if not 100%
         if total_percentage < 100:
             remaining_percentage = 100 - total_percentage
             unspecified_members = [
-                m for m in household_members if m.id not in custom_splits
+                m for m in household_members if m.id not in specified_members
             ]
 
             if unspecified_members:
@@ -225,12 +443,19 @@ class ExpenseService:
         current_total = sum(split["amount_owed"] for split in splits)
         difference = self._round_currency(target_total - current_total)
 
-        if difference != 0 and splits:
-            # Add difference to the first split (arbitrary but consistent)
-            splits[0]["amount_owed"] = self._round_currency(
-                splits[0]["amount_owed"] + difference
+        if abs(difference) > 0.01:  # Significant difference
+            raise BusinessRuleViolationError(
+                f"Split calculation error: total mismatch of ${difference:.2f}"
             )
-            splits[0]["rounding_adjustment"] = difference
+
+        if difference != 0 and splits:
+            # Add difference to the largest split (most fair)
+            largest_split = max(splits, key=lambda s: s["amount_owed"])
+            largest_split["amount_owed"] = self._round_currency(
+                largest_split["amount_owed"] + difference
+            )
+            if abs(difference) > 0.005:  # Only note significant adjustments
+                largest_split["rounding_adjustment"] = difference
 
         return splits
 
@@ -240,50 +465,165 @@ class ExpenseService:
             Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         )
 
-    def _get_household_members(self, household_id: int) -> List[User]:
-        """Get all active members of the household"""
-        return (
-            self.db.query(User)
-            .filter(User.household_id == household_id, User.is_active == True)
+    def _get_household_members(self, household_id: int) -> List[HouseholdMember]:
+        """Get all active members of the household using HouseholdMembership"""
+        members_query = (
+            self.db.query(User, HouseholdMembership)
+            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
+            .filter(
+                and_(
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                    User.is_active == True,
+                )
+            )
             .all()
         )
+
+        return [
+            HouseholdMember(
+                id=user.id,
+                name=user.name,
+                email=user.email,
+                role=membership.role,
+            )
+            for user, membership in members_query
+        ]
 
     def get_user_expense_summary(
         self, user_id: int, household_id: int
     ) -> Dict[str, Any]:
-        """Get summary of user's expense obligations"""
+        """Get comprehensive summary of user's expense obligations"""
 
+        if not self._user_can_view_household_expenses(user_id, household_id):
+            raise PermissionDeniedError("User cannot view household expenses")
+
+        # Get all household expenses
         expenses = (
-            self.db.query(Expense).filter(Expense.household_id == household_id).all()
+            self.db.query(Expense)
+            .filter(Expense.household_id == household_id)
+            .order_by(desc(Expense.created_at))
+            .all()
         )
 
         total_owed = 0
         total_owed_to_user = 0
         unpaid_expenses = []
+        expenses_created = []
 
         for expense in expenses:
             if not expense.split_details:
                 continue
 
-            for split in expense.split_details["splits"]:
-                if split["user_id"] == user_id and not split["is_paid"]:
-                    total_owed += split["amount_owed"]
+            # Check what user owes
+            user_split = self._get_user_split_amount(expense, user_id)
+            if user_split:
+                user_payments = self._get_user_payments_total(expense.id, user_id)
+                remaining = user_split - user_payments
+
+                if remaining > 0.01:  # Has unpaid amount
+                    total_owed += remaining
                     unpaid_expenses.append(
                         {
                             "expense_id": expense.id,
                             "description": expense.description,
-                            "amount_owed": split["amount_owed"],
+                            "amount_owed": user_split,
+                            "amount_paid": user_payments,
+                            "remaining": self._round_currency(remaining),
                             "created_at": expense.created_at,
+                            "category": expense.category,
                         }
                     )
-                elif expense.created_by == user_id and not split["is_paid"]:
-                    total_owed_to_user += split["amount_owed"]
+
+            # Check what others owe to user (for expenses they created)
+            if expense.created_by == user_id:
+                for split in expense.split_details["splits"]:
+                    if split["user_id"] != user_id:  # Others' shares
+                        other_user_payments = self._get_user_payments_total(
+                            expense.id, split["user_id"]
+                        )
+                        remaining = split["amount_owed"] - other_user_payments
+                        if remaining > 0.01:
+                            total_owed_to_user += remaining
+
+                expenses_created.append(
+                    {
+                        "expense_id": expense.id,
+                        "description": expense.description,
+                        "total_amount": expense.amount,
+                        "created_at": expense.created_at,
+                        "category": expense.category,
+                    }
+                )
 
         return {
+            "user_id": user_id,
+            "household_id": household_id,
             "total_owed": self._round_currency(total_owed),
             "total_owed_to_user": self._round_currency(total_owed_to_user),
-            "unpaid_expenses": unpaid_expenses,
             "net_balance": self._round_currency(total_owed_to_user - total_owed),
+            "unpaid_expenses_count": len(unpaid_expenses),
+            "unpaid_expenses": unpaid_expenses,
+            "expenses_created_count": len(expenses_created),
+            "expenses_created": expenses_created,
+            "summary_generated_at": datetime.utcnow(),
+        }
+
+    def get_payment_history(
+        self,
+        user_id: int,
+        household_id: int,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Get user's payment history for household"""
+
+        if not self._user_can_view_household_expenses(user_id, household_id):
+            raise PermissionDeniedError("User cannot view household expenses")
+
+        # Get payments with expense details
+        payments_query = (
+            self.db.query(ExpensePayment, Expense)
+            .join(Expense, ExpensePayment.expense_id == Expense.id)
+            .filter(
+                and_(
+                    ExpensePayment.paid_by == user_id,
+                    Expense.household_id == household_id,
+                )
+            )
+            .order_by(desc(ExpensePayment.payment_date))
+        )
+
+        total_count = payments_query.count()
+        payments = payments_query.offset(offset).limit(limit).all()
+
+        payment_history = []
+        for payment, expense in payments:
+            payment_history.append(
+                {
+                    "payment_id": payment.id,
+                    "amount_paid": payment.amount_paid,
+                    "payment_method": payment.payment_method,
+                    "payment_date": payment.payment_date,
+                    "expense": {
+                        "id": expense.id,
+                        "description": expense.description,
+                        "total_amount": expense.amount,
+                        "category": expense.category,
+                        "created_at": expense.created_at,
+                    },
+                }
+            )
+
+        total_paid = sum(payment.amount_paid for payment, _ in payments)
+
+        return {
+            "payments": payment_history,
+            "total_count": total_count,
+            "total_paid_shown": float(total_paid),
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total_count,
         }
 
     def record_expense_payment(
@@ -292,27 +632,127 @@ class ExpenseService:
         paid_by: int,
         amount_paid: float,
         payment_method: str = None,
+        notes: str = None,
     ) -> ExpensePayment:
-        """Record actual payment using ExpensePayment model"""
+        """Record actual payment with comprehensive validation"""
 
-        from ..models.expense import ExpensePayment
+        expense = self._get_expense_or_raise(expense_id)
 
-        payment = ExpensePayment(
-            expense_id=expense_id,
-            paid_by=paid_by,
-            amount_paid=amount_paid,
-            payment_method=payment_method,
-            payment_date=datetime.utcnow(),
+        # Validate payment permissions
+        if not self._user_can_make_payment(paid_by, expense):
+            raise PermissionDeniedError("User cannot make payments for this expense")
+
+        # Validate payment amount
+        user_split = self._get_user_split_amount(expense, paid_by)
+        if user_split is None:
+            raise PaymentValidationError(
+                f"User {paid_by} is not part of expense {expense_id} split"
+            )
+        already_paid = self._get_user_payments_total(expense_id, paid_by)
+        remaining_owed = user_split - already_paid
+
+        if amount_paid > remaining_owed + 0.01:  # Small tolerance for rounding
+            raise PaymentValidationError(
+                f"Payment amount ${amount_paid:.2f} exceeds remaining owed ${remaining_owed:.2f}"
+            )
+
+        try:
+            # Create payment record
+            payment = ExpensePayment(
+                expense_id=expense_id,
+                paid_by=paid_by,
+                amount_paid=self._round_currency(amount_paid),
+                payment_method=payment_method,
+                payment_date=datetime.utcnow(),
+            )
+
+            self.db.add(payment)
+
+            # Update split details for UI consistency
+            self._update_split_payment_status(
+                expense, paid_by, amount_paid, payment_method
+            )
+
+            self.db.commit()
+            self.db.refresh(payment)
+            return payment
+
+        except Exception as e:
+            self.db.rollback()
+            raise ExpenseServiceError(f"Failed to record payment: {str(e)}")
+
+    def get_expense_details(self, expense_id: int, requested_by: int) -> Dict[str, Any]:
+        """Get comprehensive expense details with permissions check"""
+
+        expense = self._get_expense_or_raise(expense_id)
+
+        if not self._user_can_view_expense(requested_by, expense):
+            raise PermissionDeniedError("User cannot view this expense")
+
+        # Get payment records
+        payments = (
+            self.db.query(ExpensePayment, User.name)
+            .join(User, ExpensePayment.paid_by == User.id)
+            .filter(ExpensePayment.expense_id == expense_id)
+            .order_by(desc(ExpensePayment.payment_date))
+            .all()
         )
 
-        self.db.add(payment)
-        self.db.commit()
-        self.db.refresh(payment)
+        payment_details = []
+        for payment, user_name in payments:
+            payment_details.append(
+                {
+                    "id": payment.id,
+                    "paid_by": payment.paid_by,
+                    "paid_by_name": user_name,
+                    "amount_paid": payment.amount_paid,
+                    "payment_method": payment.payment_method,
+                    "payment_date": payment.payment_date,
+                }
+            )
 
-        # Also update split_details JSON for compatibility
-        self.mark_split_paid(expense_id, paid_by, payment_method)
+        # Calculate payment status for each user
+        split_status = []
+        if expense.split_details:
+            for split in expense.split_details["splits"]:
+                user_payments = self._get_user_payments_total(
+                    expense_id, split["user_id"]
+                )
+                remaining = split["amount_owed"] - user_payments
 
-        return payment
+                split_status.append(
+                    {
+                        "user_id": split["user_id"],
+                        "user_name": split["user_name"],
+                        "amount_owed": split["amount_owed"],
+                        "amount_paid": user_payments,
+                        "remaining_owed": self._round_currency(remaining),
+                        "is_fully_paid": remaining <= 0.01,  # Tolerance for rounding
+                        "calculation_method": split.get(
+                            "calculation_method", "unknown"
+                        ),
+                    }
+                )
+
+        return {
+            "expense": {
+                "id": expense.id,
+                "description": expense.description,
+                "amount": expense.amount,
+                "category": expense.category,
+                "split_method": expense.split_method,
+                "receipt_url": expense.receipt_url,
+                "notes": expense.notes,
+                "created_by": expense.created_by,
+                "created_at": expense.created_at,
+                "updated_at": expense.updated_at,
+            },
+            "split_details": expense.split_details,
+            "split_status": split_status,
+            "payments": payment_details,
+            "total_paid": sum(p.amount_paid for p, _ in payments),
+            "is_fully_paid": all(s["is_fully_paid"] for s in split_status),
+        }
 
     def mark_split_paid(
         self, expense_id: int, user_id: int, payment_method: str = None
@@ -345,3 +785,175 @@ class ExpenseService:
 
         self.db.commit()
         return True
+
+    def _calculate_equal_splits(
+        self, total_amount: float, household_members: List[HouseholdMember]
+    ) -> List[Dict[str, Any]]:
+        """Equal split among all members"""
+        per_person = self._round_currency(total_amount / len(household_members))
+
+        splits = []
+        for member in household_members:
+            splits.append(
+                {
+                    "user_id": member.id,
+                    "user_name": member.name,
+                    "amount_owed": per_person,
+                    "calculation_method": "equal",
+                    "is_paid": False,
+                }
+            )
+
+        return splits
+
+    def _validate_custom_splits(
+        self,
+        total_amount: float,
+        split_method: SplitMethod,
+        household_members: List[HouseholdMember],
+        custom_splits: Dict[int, Union[float, str]],
+    ) -> None:
+        """Validate custom splits before processing"""
+
+        member_ids = {m.id for m in household_members}
+
+        # Check all specified users are household members
+        for user_id in custom_splits.keys():
+            if user_id not in member_ids:
+                raise BusinessRuleViolationError(
+                    f"User {user_id} is not a household member"
+                )
+
+        if split_method == SplitMethod.SPECIFIC:
+            # For specific amounts, check they don't exceed total
+            specified_total = sum(float(amount) for amount in custom_splits.values())
+            if specified_total > total_amount + 0.01:
+                raise BusinessRuleViolationError(
+                    "Custom amounts exceed total expense amount"
+                )
+
+        elif split_method == SplitMethod.PERCENTAGE:
+            # For percentages, check they don't exceed 100%
+            total_percentage = sum(float(pct) for pct in custom_splits.values())
+            if total_percentage > 100:
+                raise BusinessRuleViolationError("Total percentages cannot exceed 100%")
+
+    def _get_expense_or_raise(self, expense_id: int) -> Expense:
+        """Get expense or raise exception"""
+        expense = self.db.query(Expense).filter(Expense.id == expense_id).first()
+        if not expense:
+            raise ExpenseNotFoundError(f"Expense {expense_id} not found")
+        return expense
+
+    def _user_can_create_expense(self, user_id: int, household_id: int) -> bool:
+        """Check if user can create expenses for household"""
+        return (
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.user_id == user_id,
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                )
+            )
+            .first()
+        ) is not None
+
+    def _user_can_edit_expense(self, user_id: int, expense: Expense) -> bool:
+        """Check if user can edit expense (creator or admin)"""
+        if expense.created_by == user_id:
+            return True
+
+        # Check if user is household admin
+        admin_membership = (
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.user_id == user_id,
+                    HouseholdMembership.household_id == expense.household_id,
+                    HouseholdMembership.role == "admin",
+                    HouseholdMembership.is_active == True,
+                )
+            )
+            .first()
+        )
+        return admin_membership is not None
+
+    def _user_can_view_expense(self, user_id: int, expense: Expense) -> bool:
+        """Check if user can view expense details"""
+        return self._user_can_create_expense(user_id, expense.household_id)
+
+    def _user_can_view_household_expenses(
+        self, user_id: int, household_id: int
+    ) -> bool:
+        """Check if user can view household expenses"""
+        return self._user_can_create_expense(user_id, household_id)
+
+    def _user_can_make_payment(self, user_id: int, expense: Expense) -> bool:
+        """Check if user can make payments for expense"""
+        return self._user_can_create_expense(user_id, expense.household_id)
+
+    def _expense_has_payments(self, expense_id: int) -> bool:
+        """Check if expense has any payment records"""
+        return (
+            self.db.query(ExpensePayment)
+            .filter(ExpensePayment.expense_id == expense_id)
+            .first()
+        ) is not None
+
+    def _get_user_split_amount(self, expense: Expense, user_id: int) -> Optional[float]:
+        """Get the amount a user owes for an expense"""
+        if not expense.split_details:
+            return None
+
+        for split in expense.split_details["splits"]:
+            if split["user_id"] == user_id:
+                return split["amount_owed"]
+        return None
+
+    def _get_user_payments_total(self, expense_id: int, user_id: int) -> float:
+        """Get total amount user has paid for expense"""
+        total = (
+            self.db.query(func.sum(ExpensePayment.amount_paid))
+            .filter(
+                and_(
+                    ExpensePayment.expense_id == expense_id,
+                    ExpensePayment.paid_by == user_id,
+                )
+            )
+            .scalar()
+        )
+        return float(total or 0)
+
+    def _update_split_payment_status(
+        self, expense: Expense, user_id: int, amount_paid: float, payment_method: str
+    ) -> None:
+        """Update split_details JSON for UI consistency"""
+        if not expense.split_details:
+            return
+
+        split_details = expense.split_details.copy()
+
+        # Find and update user's split status
+        for split in split_details["splits"]:
+            if split["user_id"] == user_id:
+                total_paid = (
+                    self._get_user_payments_total(expense.id, user_id) + amount_paid
+                )
+                split["amount_paid"] = total_paid
+                split["is_paid"] = total_paid >= split["amount_owed"] - 0.01
+                if split["is_paid"]:
+                    split["paid_at"] = datetime.utcnow().isoformat()
+                if payment_method:
+                    split["payment_method"] = payment_method
+                break
+
+        # Check if all splits are paid
+        all_paid = all(split["is_paid"] for split in split_details["splits"])
+        split_details["all_paid"] = all_paid
+
+        # Update expense
+        from sqlalchemy.orm.attributes import flag_modified
+
+        expense.split_details = split_details
+        flag_modified(expense, "split_details")

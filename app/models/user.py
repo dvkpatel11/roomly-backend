@@ -1,5 +1,5 @@
 from app.models.enums import HouseholdRole
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -13,14 +13,12 @@ class User(Base):
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=True)
+    phone = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    phone = Column(String)
-    household_role = Column(String, default=HouseholdRole.MEMBER.value)
 
-    # Relationships
-    household = relationship("Household", back_populates="members")
+    # Relationships - Use household_memberships instead of direct household relationship
+    household_memberships = relationship("HouseholdMembership", back_populates="user")
 
     # Expenses
     created_expenses = relationship(
@@ -29,6 +27,7 @@ class User(Base):
         foreign_keys="Expense.created_by",
         cascade="all, delete-orphan",
     )
+    expense_payments = relationship("ExpensePayment", back_populates="user")
 
     # Bills
     created_bills = relationship(
@@ -84,4 +83,23 @@ class User(Base):
         foreign_keys="ShoppingList.assigned_shopper",
     )
     requested_shopping_items = relationship("ShoppingItem", back_populates="requester")
-    expense_payments = relationship("ExpensePayment", back_populates="user")
+
+    # Helper methods
+    def get_active_household(self):
+        """Get the user's currently active household"""
+        active_membership = next(
+            (m for m in self.household_memberships if m.is_active), None
+        )
+        return active_membership.household if active_membership else None
+
+    def get_household_role(self, household_id: int):
+        """Get user's role in a specific household"""
+        membership = next(
+            (
+                m
+                for m in self.household_memberships
+                if m.household_id == household_id and m.is_active
+            ),
+            None,
+        )
+        return membership.role if membership else None

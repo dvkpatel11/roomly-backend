@@ -1,5 +1,6 @@
+from app.models.enums import HouseholdRole
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc, func
+from sqlalchemy import and_, func
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from ..models.household import Household
@@ -11,6 +12,37 @@ from ..models.household_membership import HouseholdMembership
 from ..schemas.household import HouseholdCreate, HouseholdUpdate
 
 
+# Custom Exceptions for better error handling
+class HouseholdServiceError(Exception):
+    """Base exception for household service errors"""
+
+    pass
+
+
+class HouseholdNotFoundError(HouseholdServiceError):
+    """Household not found"""
+
+    pass
+
+
+class UserNotFoundError(HouseholdServiceError):
+    """User not found"""
+
+    pass
+
+
+class PermissionDeniedError(HouseholdServiceError):
+    """Permission denied for operation"""
+
+    pass
+
+
+class BusinessRuleViolationError(HouseholdServiceError):
+    """Business rule violation"""
+
+    pass
+
+
 class HouseholdService:
     def __init__(self, db: Session):
         self.db = db
@@ -20,51 +52,64 @@ class HouseholdService:
     ) -> Household:
         """Create a new household with creator as admin"""
 
-        household = Household(
-            name=household_data.name,
-            address=household_data.address,
-            house_rules=household_data.house_rules,
-        )
+        # Validate creator exists and is not already in a household
+        creator = self._get_user_or_raise(creator_id)
 
-        self.db.add(household)
-        self.db.commit()
-        self.db.refresh(household)
+        if self._user_has_active_household(creator_id):
+            raise BusinessRuleViolationError("User is already a member of a household")
 
-        # Add creator as admin using the membership system
-        self.add_member_to_household(
-            household_id=household.id,
-            user_id=creator_id,
-            role="admin",
-            added_by=creator_id,  # Self-added
-        )
+        try:
+            household = Household(
+                name=household_data.name,
+                address=household_data.address,
+                house_rules=household_data.house_rules,
+                settings=self._get_default_household_settings(),
+            )
 
-        return household
+            self.db.add(household)
+            self.db.flush()  # Get ID without committing
+
+            # Add creator as admin
+            self._create_membership(
+                user_id=creator_id,
+                household_id=household.id,
+                role=HouseholdRole.ADMIN.value,
+            )
+
+            self.db.commit()
+            self.db.refresh(household)
+            return household
+
+        except Exception as e:
+            self.db.rollback()
+            raise HouseholdServiceError(f"Failed to create household: {str(e)}")
 
     def add_member_to_household(
         self,
         household_id: int,
         user_id: int,
-        role: str = "member",
+        role: str = HouseholdRole.MEMBER.value,
         added_by: int = None,
     ) -> bool:
-        """Add member using HouseholdMembership model with proper validation"""
+        """Add member to household with single household business rule"""
 
-        # Validate household exists
-        household = (
-            self.db.query(Household).filter(Household.id == household_id).first()
-        )
-        if not household:
-            raise ValueError("Household not found")
+        # Validate inputs
+        household = self._get_household_or_raise(household_id)
+        user = self._get_user_or_raise(user_id)
 
-        # Validate user exists and is not already in another household
-        user = self.db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise ValueError("User not found")
+        # Validate role
+        if role not in [r.value for r in HouseholdRole]:
+            raise BusinessRuleViolationError(f"Invalid role: {role}")
 
-        if user.household_id and user.household_id != household_id:
-            raise ValueError("User is already a member of another household")
+        # Check permissions if added_by is specified
+        if added_by and not self.check_admin_permissions(added_by, household_id):
+            raise PermissionDeniedError("Only admins can add members")
 
-        # Check if already a member (including inactive memberships)
+        # Single household business rule
+        if self._user_has_active_household(user_id):
+            raise BusinessRuleViolationError("User is already a member of a household")
+
+        # Check if user was previously a member (for reactivation)
         existing_membership = (
             self.db.query(HouseholdMembership)
             .filter(
@@ -76,196 +121,111 @@ class HouseholdService:
             .first()
         )
 
-        if existing_membership:
-            if existing_membership.is_active:
-                return False  # Already an active member
+        try:
+            if existing_membership:
+                if existing_membership.is_active:
+                    return False  # Already active member
+                else:
+                    # Reactivate previous membership
+                    existing_membership.is_active = True
+                    existing_membership.role = role
+                    existing_membership.joined_at = datetime.utcnow()
             else:
-                # Reactivate inactive membership
-                existing_membership.is_active = True
-                existing_membership.role = role
-                existing_membership.joined_at = datetime.utcnow()
-        else:
-            # Create new membership record
-            membership = HouseholdMembership(
-                user_id=user_id, household_id=household_id, role=role, is_active=True
-            )
-            self.db.add(membership)
+                # Create new membership
+                self._create_membership(user_id, household_id, role)
 
-        # Update user table for backward compatibility
-        user.household_id = household_id
-        user.household_role = role
-        user.is_active = True
+            self.db.commit()
+            return True
 
-        self.db.commit()
-        return True
+        except Exception as e:
+            self.db.rollback()
+            raise HouseholdServiceError(f"Failed to add member: {str(e)}")
 
     def remove_member_from_household(
         self, household_id: int, user_id: int, removed_by: int
     ) -> Dict[str, Any]:
-        """Remove a user from household with proper cleanup"""
+        """Remove member with proper validation and cleanup"""
 
-        # Validate permissions (only admin or self can remove)
-        if removed_by != user_id:
-            remover_membership = (
-                self.db.query(HouseholdMembership)
-                .filter(
-                    and_(
-                        HouseholdMembership.user_id == removed_by,
-                        HouseholdMembership.household_id == household_id,
-                        HouseholdMembership.is_active == True,
-                        HouseholdMembership.role == "admin",
-                    )
-                )
-                .first()
+        # Validate permissions
+        if not self._can_remove_member(household_id, user_id, removed_by):
+            raise PermissionDeniedError(
+                "Only admin or the user themselves can remove a member"
             )
 
-            if not remover_membership:
-                raise ValueError(
-                    "Only admin or the user themselves can remove a member"
-                )
-
-        # Find the membership
-        membership = (
-            self.db.query(HouseholdMembership)
-            .filter(
-                and_(
-                    HouseholdMembership.user_id == user_id,
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                )
-            )
-            .first()
-        )
-
+        # Get membership
+        membership = self._get_active_membership(user_id, household_id)
         if not membership:
+            raise BusinessRuleViolationError("User is not a member of this household")
+
+        # Prevent removing last admin
+        if membership.role == HouseholdRole.ADMIN.value and self._is_last_admin(
+            household_id
+        ):
+            raise BusinessRuleViolationError(
+                "Cannot remove the last admin from household"
+            )
+
+        try:
+            # Check for pending responsibilities
+            warnings = self._check_pending_responsibilities(user_id)
+
+            # Deactivate membership (preserve audit trail)
+            membership.is_active = False
+
+            self.db.commit()
+
             return {
-                "success": False,
-                "message": "User is not a member of this household",
+                "success": True,
+                "message": "Member removed successfully",
+                "warnings": warnings.get("warnings", []),
+                "pending_tasks": warnings.get("pending_tasks", 0),
             }
 
-        # Check if this is the last admin
-        if membership.role == "admin":
-            admin_count = (
-                self.db.query(HouseholdMembership)
-                .filter(
-                    and_(
-                        HouseholdMembership.household_id == household_id,
-                        HouseholdMembership.role == "admin",
-                        HouseholdMembership.is_active == True,
-                    )
-                )
-                .count()
-            )
-
-            if admin_count <= 1:
-                return {
-                    "success": False,
-                    "message": "Cannot remove the last admin from household",
-                }
-
-        # Check for pending responsibilities
-        pending_tasks = (
-            self.db.query(Task)
-            .filter(and_(Task.assigned_to == user_id, Task.completed == False))
-            .count()
-        )
-
-        warnings = []
-        if pending_tasks > 0:
-            warnings.append(
-                f"User has {pending_tasks} incomplete tasks that may need reassignment"
-            )
-
-        # Get user for cleanup
-        user = self.db.query(User).filter(User.id == user_id).first()
-
-        # Deactivate membership (don't delete for audit trail)
-        membership.is_active = False
-
-        # Update user table
-        if user:
-            user.household_id = None
-            user.household_role = None
-
-        self.db.commit()
-
-        return {
-            "success": True,
-            "message": "Member removed successfully",
-            "warnings": warnings,
-            "pending_tasks": pending_tasks,
-        }
+        except Exception as e:
+            self.db.rollback()
+            raise HouseholdServiceError(f"Failed to remove member: {str(e)}")
 
     def update_member_role(
         self, household_id: int, user_id: int, new_role: str, updated_by: int
     ) -> bool:
-        """Update member role with validation"""
+        """Update member role with proper validation"""
 
-        # Check permissions (only admin can change roles)
-        updater_membership = (
-            self.db.query(HouseholdMembership)
-            .filter(
-                and_(
-                    HouseholdMembership.user_id == updated_by,
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    HouseholdMembership.role == "admin",
-                )
-            )
-            .first()
-        )
+        # Validate role
+        if new_role not in [r.value for r in HouseholdRole]:
+            raise BusinessRuleViolationError(f"Invalid role: {new_role}")
 
-        if not updater_membership:
-            raise ValueError("Only admins can update member roles")
+        # Check permissions
+        if not self.check_admin_permissions(updated_by, household_id):
+            raise PermissionDeniedError("Only admins can update member roles")
 
-        # Find target membership
-        membership = (
-            self.db.query(HouseholdMembership)
-            .filter(
-                and_(
-                    HouseholdMembership.user_id == user_id,
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                )
-            )
-            .first()
-        )
-
+        # Get target membership
+        membership = self._get_active_membership(user_id, household_id)
         if not membership:
-            raise ValueError("User is not a member of this household")
+            raise BusinessRuleViolationError("User is not a member of this household")
 
-        # Prevent removing admin role if it's the last admin
-        if membership.role == "admin" and new_role != "admin":
-            admin_count = (
-                self.db.query(HouseholdMembership)
-                .filter(
-                    and_(
-                        HouseholdMembership.household_id == household_id,
-                        HouseholdMembership.role == "admin",
-                        HouseholdMembership.is_active == True,
-                    )
-                )
-                .count()
+        # Prevent removing last admin
+        if (
+            membership.role == HouseholdRole.ADMIN.value
+            and new_role != HouseholdRole.ADMIN.value
+            and self._is_last_admin(household_id)
+        ):
+            raise BusinessRuleViolationError(
+                "Cannot remove admin role from the last admin"
             )
 
-            if admin_count <= 1:
-                raise ValueError("Cannot remove admin role from the last admin")
+        try:
+            membership.role = new_role
+            self.db.commit()
+            return True
 
-        # Update role
-        membership.role = new_role
-
-        # Update user table for consistency
-        user = self.db.query(User).filter(User.id == user_id).first()
-        if user:
-            user.household_role = new_role
-
-        self.db.commit()
-        return True
+        except Exception as e:
+            self.db.rollback()
+            raise HouseholdServiceError(f"Failed to update member role: {str(e)}")
 
     def get_household_members(self, household_id: int) -> List[Dict[str, Any]]:
-        """Get all members using HouseholdMembership model"""
+        """Get all household members with optimized queries"""
 
-        # Join User and HouseholdMembership for efficient querying
+        # Optimized query to avoid N+1 problems
         members_query = (
             self.db.query(User, HouseholdMembership)
             .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
@@ -275,45 +235,48 @@ class HouseholdService:
                     HouseholdMembership.is_active == True,
                 )
             )
-            .order_by(HouseholdMembership.role.desc(), User.name)  # Admins first
+            .order_by(
+                # Custom order: admin first, then by role, then by name
+                func.case(
+                    [(HouseholdMembership.role == HouseholdRole.ADMIN.value, 1)],
+                    else_=2,
+                ),
+                HouseholdMembership.role,
+                User.name,
+            )
         )
+
+        # Get member statistics in batch
+        user_ids = [user.id for user, _ in members_query]
+        member_stats = self._get_batch_member_statistics(user_ids) if user_ids else {}
 
         result = []
         for user, membership in members_query:
-            # Get member statistics
-            stats = self._get_member_statistics(user.id)
-
             result.append(
                 {
                     "id": user.id,
                     "name": user.name,
                     "email": user.email,
+                    "phone": user.phone,
                     "is_active": user.is_active,
                     "joined_at": membership.joined_at,
                     "role": membership.role,
-                    "statistics": stats,
-                    "phone": user.phone,
+                    "is_admin": membership.role == HouseholdRole.ADMIN.value,
+                    "statistics": member_stats.get(
+                        user.id, self._get_empty_member_stats()
+                    ),
                 }
             )
 
         return result
 
     def get_household_details(self, household_id: int) -> Dict[str, Any]:
-        """Get detailed household information"""
+        """Get comprehensive household information"""
 
-        household = (
-            self.db.query(Household).filter(Household.id == household_id).first()
-        )
-        if not household:
-            raise ValueError("Household not found")
-
+        household = self._get_household_or_raise(household_id)
         members = self.get_household_members(household_id)
         health_score = self.calculate_household_health_score(household_id)
         statistics = self.get_household_statistics(household_id)
-
-        # Count active vs inactive members
-        active_members = [m for m in members if m["is_active"]]
-        admin_count = len([m for m in members if m["role"] == "admin"])
 
         return {
             "id": household.id,
@@ -322,74 +285,29 @@ class HouseholdService:
             "house_rules": household.house_rules,
             "settings": household.settings or {},
             "created_at": household.created_at,
-            "member_count": len(active_members),
-            "admin_count": admin_count,
+            "updated_at": household.updated_at,
+            "member_count": len([m for m in members if m["is_active"]]),
+            "admin_count": len(
+                [m for m in members if m["role"] == HouseholdRole.ADMIN.value]
+            ),
             "members": members,
             "health_score": health_score,
             "statistics": statistics,
         }
 
-    def update_household_settings(
-        self, household_id: int, settings_update: HouseholdUpdate, updated_by: int
-    ) -> Household:
-        """Update household settings with permission check"""
-
-        # Check permissions (only admin can update settings)
-        updater_membership = (
-            self.db.query(HouseholdMembership)
-            .filter(
-                and_(
-                    HouseholdMembership.user_id == updated_by,
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    HouseholdMembership.role == "admin",
-                )
-            )
-            .first()
-        )
-
-        if not updater_membership:
-            raise ValueError("Only admins can update household settings")
-
-        household = (
-            self.db.query(Household).filter(Household.id == household_id).first()
-        )
-        if not household:
-            raise ValueError("Household not found")
-
-        # Update fields
-        for field, value in settings_update.dict(exclude_unset=True).items():
-            setattr(household, field, value)
-
-        household.updated_at = datetime.utcnow()
-
-        self.db.commit()
-        self.db.refresh(household)
-
-        return household
-
     def check_admin_permissions(self, user_id: int, household_id: int) -> bool:
         """Check if user has admin permissions for household"""
+        membership = self._get_active_membership(user_id, household_id)
+        return membership is not None and membership.role == HouseholdRole.ADMIN.value
 
-        membership = (
-            self.db.query(HouseholdMembership)
-            .filter(
-                and_(
-                    HouseholdMembership.user_id == user_id,
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    HouseholdMembership.role == "admin",
-                )
-            )
-            .first()
-        )
-
-        return membership is not None
+    def check_member_permissions(self, user_id: int, household_id: int) -> bool:
+        """Check if user is a member (any role) of household"""
+        return self._get_active_membership(user_id, household_id) is not None
 
     def get_user_household_info(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Get user's current household information"""
+        """Get user's current household information (single household)"""
 
-        membership = (
+        membership_query = (
             self.db.query(HouseholdMembership, Household)
             .join(Household, HouseholdMembership.household_id == Household.id)
             .filter(
@@ -401,37 +319,290 @@ class HouseholdService:
             .first()
         )
 
-        if not membership:
+        if not membership_query:
             return None
 
-        membership_obj, household = membership
+        membership, household = membership_query
 
         return {
             "household_id": household.id,
             "household_name": household.name,
-            "user_role": membership_obj.role,
-            "joined_at": membership_obj.joined_at,
-            "is_admin": membership_obj.role == "admin",
+            "user_role": membership.role,
+            "joined_at": membership.joined_at,
+            "is_admin": membership.role == HouseholdRole.ADMIN.value,
+            "is_guest": membership.role == HouseholdRole.GUEST.value,
+            "member_count": self._get_active_member_count(household.id),
         }
 
-    def calculate_household_health_score(self, household_id: int) -> Dict[str, Any]:
-        """Calculate overall household health score"""
+    def transfer_household_ownership(
+        self, household_id: int, current_admin_id: int, new_admin_id: int
+    ) -> bool:
+        """Transfer household ownership to another member"""
+
+        # Validate current admin permissions
+        if not self.check_admin_permissions(current_admin_id, household_id):
+            raise PermissionDeniedError("Only current admin can transfer ownership")
+
+        # Validate new admin is a member
+        new_admin_membership = self._get_active_membership(new_admin_id, household_id)
+        if not new_admin_membership:
+            raise BusinessRuleViolationError("New admin must be a household member")
+
+        try:
+            # Update new admin role
+            new_admin_membership.role = HouseholdRole.ADMIN.value
+
+            # Optionally demote current admin to member
+            current_admin_membership = self._get_active_membership(
+                current_admin_id, household_id
+            )
+            if current_admin_membership:
+                current_admin_membership.role = HouseholdRole.MEMBER.value
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            raise HouseholdServiceError(f"Failed to transfer ownership: {str(e)}")
+
+    # === PRIVATE HELPER METHODS ===
+
+    def _get_household_or_raise(self, household_id: int) -> Household:
+        """Get household or raise exception"""
+        household = (
+            self.db.query(Household).filter(Household.id == household_id).first()
+        )
+        if not household:
+            raise HouseholdNotFoundError(f"Household {household_id} not found")
+        return household
+
+    def _get_user_or_raise(self, user_id: int) -> User:
+        """Get user or raise exception"""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise UserNotFoundError(f"User {user_id} not found")
+        return user
+
+    def _get_active_membership(
+        self, user_id: int, household_id: int
+    ) -> Optional[HouseholdMembership]:
+        """Get active membership for user in household"""
+        return (
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.user_id == user_id,
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                )
+            )
+            .first()
+        )
+
+    def _create_membership(
+        self, user_id: int, household_id: int, role: str
+    ) -> HouseholdMembership:
+        """Create new membership record"""
+        membership = HouseholdMembership(
+            user_id=user_id, household_id=household_id, role=role, is_active=True
+        )
+        self.db.add(membership)
+        return membership
+
+    def _is_user_already_member(self, user_id: int, household_id: int) -> bool:
+        """Check if user is already an active member"""
+        return self._get_active_membership(user_id, household_id) is not None
+
+    def _user_has_active_household(self, user_id: int) -> bool:
+        """Check if user has any active household membership (single household rule)"""
+        return (
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.user_id == user_id,
+                    HouseholdMembership.is_active == True,
+                )
+            )
+            .first()
+        ) is not None
+
+    def _can_remove_member(
+        self, household_id: int, user_id: int, removed_by: int
+    ) -> bool:
+        """Check if remover has permission to remove member"""
+        if removed_by == user_id:
+            return True  # Self-removal always allowed
+        return self.check_admin_permissions(removed_by, household_id)
+
+    def _is_last_admin(self, household_id: int) -> bool:
+        """Check if there's only one admin left"""
+        admin_count = (
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.role == HouseholdRole.ADMIN.value,
+                    HouseholdMembership.is_active == True,
+                )
+            )
+            .count()
+        )
+        return admin_count <= 1
+
+    def _check_pending_responsibilities(self, user_id: int) -> Dict[str, Any]:
+        """Check for pending responsibilities before removal"""
+        pending_tasks = (
+            self.db.query(Task)
+            .filter(
+                and_(
+                    Task.assigned_to == user_id,
+                    Task.status.in_(["pending", "in_progress", "overdue"]),
+                )
+            )
+            .count()
+        )
+
+        warnings = []
+        if pending_tasks > 0:
+            warnings.append(
+                f"User has {pending_tasks} incomplete tasks that may need reassignment"
+            )
+
+        return {
+            "warnings": warnings,
+            "pending_tasks": pending_tasks,
+        }
+
+    def _get_batch_member_statistics(
+        self, user_ids: List[int]
+    ) -> Dict[int, Dict[str, Any]]:
+        """Get statistics for multiple users efficiently"""
+        if not user_ids:
+            return {}
 
         now = datetime.utcnow()
         last_month = now - timedelta(days=30)
 
-        # Financial health (40% weight)
+        # Batch query for task statistics
+        task_stats = (
+            self.db.query(
+                Task.assigned_to,
+                func.count(Task.id).label("tasks_assigned"),
+                func.sum(func.case([(Task.status == "completed", 1)], else_=0)).label(
+                    "tasks_completed"
+                ),
+                func.sum(
+                    func.case([(Task.status == "completed", Task.points)], else_=0)
+                ).label("points_earned"),
+            )
+            .filter(and_(Task.assigned_to.in_(user_ids), Task.created_at >= last_month))
+            .group_by(Task.assigned_to)
+            .all()
+        )
+
+        # Batch query for expense statistics
+        expense_stats = (
+            self.db.query(
+                Expense.created_by,
+                func.count(Expense.id).label("expenses_created"),
+                func.sum(Expense.amount).label("total_expenses_amount"),
+            )
+            .filter(
+                and_(Expense.created_by.in_(user_ids), Expense.created_at >= last_month)
+            )
+            .group_by(Expense.created_by)
+            .all()
+        )
+
+        # Build comprehensive result
+        result = {user_id: self._get_empty_member_stats() for user_id in user_ids}
+
+        # Update with task stats
+        for stat in task_stats:
+            user_id = stat.assigned_to
+            tasks_assigned = stat.tasks_assigned or 0
+            tasks_completed = stat.tasks_completed or 0
+
+            result[user_id].update(
+                {
+                    "tasks_assigned_last_month": tasks_assigned,
+                    "tasks_completed_last_month": tasks_completed,
+                    "completion_rate": round(
+                        (
+                            (tasks_completed / tasks_assigned * 100)
+                            if tasks_assigned > 0
+                            else 0
+                        ),
+                        1,
+                    ),
+                    "points_earned_last_month": int(stat.points_earned or 0),
+                }
+            )
+
+        # Update with expense stats
+        for stat in expense_stats:
+            user_id = stat.created_by
+            result[user_id].update(
+                {
+                    "expenses_created_last_month": stat.expenses_created or 0,
+                    "total_expenses_amount_last_month": float(
+                        stat.total_expenses_amount or 0
+                    ),
+                }
+            )
+
+        return result
+
+    def _get_empty_member_stats(self) -> Dict[str, Any]:
+        """Get empty member statistics structure"""
+        return {
+            "tasks_assigned_last_month": 0,
+            "tasks_completed_last_month": 0,
+            "completion_rate": 0.0,
+            "points_earned_last_month": 0,
+            "expenses_created_last_month": 0,
+            "total_expenses_amount_last_month": 0.0,
+        }
+
+    def _get_default_household_settings(self) -> Dict[str, Any]:
+        """Get default household settings"""
+        return {
+            "guest_policy": {
+                "max_overnight_guests": 2,
+                "max_consecutive_nights": 3,
+                "approval_required": True,
+                "quiet_hours_start": "22:00",
+                "quiet_hours_end": "08:00",
+            },
+            "notification_settings": {
+                "bill_reminder_days": 3,
+                "task_overdue_hours": 24,
+                "event_reminder_hours": 24,
+            },
+            "task_settings": {
+                "rotation_enabled": True,
+                "point_system_enabled": True,
+                "photo_proof_required": False,
+            },
+        }
+
+    def _enforce_single_household(self) -> bool:
+        """Business rule: enforce single household per user"""
+        return True  # Change this based on your business requirements
+
+    def calculate_household_health_score(self, household_id: int) -> Dict[str, Any]:
+        """Calculate comprehensive household health score"""
+
+        now = datetime.utcnow()
+        last_month = now - timedelta(days=30)
+
+        # Calculate individual health components
         financial_score = self._calculate_financial_health(household_id, last_month)
-
-        # Task completion health (30% weight)
         task_score = self._calculate_task_health(household_id, last_month)
-
-        # Communication activity (20% weight)
         communication_score = self._calculate_communication_health(
             household_id, last_month
         )
-
-        # Member satisfaction (10% weight) - enhanced
         member_score = self._calculate_member_satisfaction(household_id)
 
         # Weighted overall score
@@ -695,125 +866,59 @@ class HouseholdService:
 
         return suggestions
 
-    def _get_member_statistics(self, user_id: int) -> Dict[str, Any]:
-        """Get comprehensive statistics for a household member"""
-
-        now = datetime.utcnow()
-        last_month = now - timedelta(days=30)
-
-        # Task statistics
-        tasks_assigned = (
-            self.db.query(Task)
-            .filter(and_(Task.assigned_to == user_id, Task.created_at >= last_month))
-            .count()
-        )
-
-        tasks_completed = (
-            self.db.query(Task)
+    def _get_active_member_count(self, household_id: int) -> int:
+        """Get count of active members"""
+        return (
+            self.db.query(HouseholdMembership)
             .filter(
                 and_(
-                    Task.assigned_to == user_id,
-                    Task.completed == True,
-                    Task.completed_at >= last_month,
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
                 )
             )
             .count()
         )
-
-        # Points earned
-        points_earned = (
-            self.db.query(func.sum(Task.points))
-            .filter(
-                and_(
-                    Task.assigned_to == user_id,
-                    Task.completed == True,
-                    Task.completed_at >= last_month,
-                )
-            )
-            .scalar()
-            or 0
-        )
-
-        # Expense statistics
-        expenses_created = (
-            self.db.query(Expense)
-            .filter(
-                and_(Expense.created_by == user_id, Expense.created_at >= last_month)
-            )
-            .count()
-        )
-
-        total_expenses_amount = (
-            self.db.query(func.sum(Expense.amount))
-            .filter(
-                and_(Expense.created_by == user_id, Expense.created_at >= last_month)
-            )
-            .scalar()
-            or 0
-        )
-
-        return {
-            "tasks_assigned_last_month": tasks_assigned,
-            "tasks_completed_last_month": tasks_completed,
-            "completion_rate": round(
-                (tasks_completed / tasks_assigned * 100) if tasks_assigned > 0 else 0, 1
-            ),
-            "points_earned_last_month": int(points_earned),
-            "expenses_created_last_month": expenses_created,
-            "total_expenses_amount_last_month": float(total_expenses_amount),
-        }
 
     def get_household_statistics(self, household_id: int) -> Dict[str, Any]:
-        """Get comprehensive household statistics"""
+        """Get comprehensive household statistics for the last 30 days"""
 
         now = datetime.utcnow()
         last_month = now - timedelta(days=30)
 
         # Financial stats
-        total_expenses = (
-            self.db.query(func.sum(Expense.amount))
+        financial_stats = (
+            self.db.query(
+                func.sum(Expense.amount).label("total_expenses"),
+                func.count(Expense.id).label("expense_count"),
+            )
             .filter(
                 and_(
                     Expense.household_id == household_id,
                     Expense.created_at >= last_month,
                 )
             )
-            .scalar()
-            or 0
+            .first()
         )
 
-        expense_count = (
-            self.db.query(Expense)
-            .filter(
-                and_(
-                    Expense.household_id == household_id,
-                    Expense.created_at >= last_month,
-                )
-            )
-            .count()
-        )
+        total_expenses = float(financial_stats.total_expenses or 0)
+        expense_count = financial_stats.expense_count or 0
 
         # Task stats
-        total_tasks = (
-            self.db.query(Task).filter(Task.household_id == household_id).count()
-        )
-
-        completed_tasks = (
-            self.db.query(Task)
-            .filter(and_(Task.household_id == household_id, Task.completed == True))
-            .count()
-        )
-
-        overdue_tasks = (
-            self.db.query(Task)
-            .filter(
-                and_(
-                    Task.household_id == household_id,
-                    Task.completed == False,
-                    Task.due_date < now,
-                )
+        task_stats = (
+            self.db.query(
+                func.count(Task.id).label("total_tasks"),
+                func.sum(func.case([(Task.status == "completed", 1)], else_=0)).label(
+                    "completed_tasks"
+                ),
+                func.sum(
+                    func.case(
+                        [(and_(Task.status != "completed", Task.due_date < now), 1)],
+                        else_=0,
+                    )
+                ).label("overdue_tasks"),
             )
-            .count()
+            .filter(Task.household_id == household_id)
+            .first()
         )
 
         # Event stats
@@ -829,37 +934,64 @@ class HouseholdService:
             .count()
         )
 
-        # Member stats
-        active_members = (
-            self.db.query(HouseholdMembership)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                )
-            )
-            .count()
-        )
-
         # Household age
-        household = (
-            self.db.query(Household).filter(Household.id == household_id).first()
-        )
-        household_age_days = (now - household.created_at).days if household else 0
+        household = self._get_household_or_raise(household_id)
+        household_age_days = (now - household.created_at).days
 
         return {
-            "total_monthly_expenses": float(total_expenses),
+            "total_monthly_expenses": total_expenses,
             "expense_count_last_month": expense_count,
             "average_expense_amount": (
-                float(total_expenses / expense_count) if expense_count > 0 else 0
+                round(total_expenses / expense_count, 2) if expense_count > 0 else 0
             ),
-            "total_tasks": total_tasks,
-            "completed_tasks": completed_tasks,
-            "overdue_tasks": overdue_tasks,
+            "total_tasks": task_stats.total_tasks or 0,
+            "completed_tasks": task_stats.completed_tasks or 0,
+            "overdue_tasks": task_stats.overdue_tasks or 0,
             "task_completion_rate": round(
-                (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0, 1
+                (
+                    (task_stats.completed_tasks or 0)
+                    / (task_stats.total_tasks or 1)
+                    * 100
+                ),
+                1,
             ),
             "upcoming_events": upcoming_events,
-            "active_members": active_members,
+            "active_members": self._get_active_member_count(household_id),
             "household_age_days": household_age_days,
+        }
+
+    def update_household_settings(
+        self, household_id: int, settings_update: HouseholdUpdate, updated_by: int
+    ) -> Household:
+        """Update household settings (admin only)"""
+
+        if not self.check_admin_permissions(updated_by, household_id):
+            raise PermissionDeniedError("Only admins can update household settings")
+
+        household = self._get_household_or_raise(household_id)
+
+        try:
+            # Update fields that were provided
+            update_data = settings_update.dict(exclude_unset=True)
+            for field, value in update_data.items():
+                setattr(household, field, value)
+
+            household.updated_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(household)
+            return household
+
+        except Exception as e:
+            self.db.rollback()
+            raise HouseholdServiceError(f"Failed to update household: {str(e)}")
+
+    # TODO: Migration helper for future multi-household support
+    def _prepare_for_multi_household_migration(self) -> Dict[str, Any]:
+        """Future: Prepare data for multi-household migration"""
+        # This method will help when you want to support multiple households
+        # For now, it's just a placeholder for future development
+        return {
+            "migration_needed": False,
+            "current_model": "single_household",
+            "target_model": "multi_household",
         }

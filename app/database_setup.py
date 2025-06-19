@@ -11,12 +11,16 @@ try:
     from .models import (
         User,
         Household,
+        HouseholdMembership,
         Expense,
+        ExpensePayment,
         Bill,
         BillPayment,
         Task,
         Event,
+        EventApproval,
         Guest,
+        GuestApproval,
         Announcement,
         Poll,
         PollVote,
@@ -26,15 +30,17 @@ try:
         UserSchedule,
         ShoppingList,
         ShoppingItem,
-        HouseholdMembership,  # MISSING
-        ExpensePayment,  # MISSING
-        GuestApproval,  # MISSING
-        EventApproval,
     )
 
     print("📋 Creating all database tables...")
     Base.metadata.create_all(bind=engine)
     print("✅ Database setup complete!")
+
+    # Print table summary
+    tables = Base.metadata.tables.keys()
+    print(f"📊 Created {len(tables)} tables:")
+    for table in sorted(tables):
+        print(f"  - {table}")
 
 except ImportError as e:
     print(f"❌ Import error: {e}")

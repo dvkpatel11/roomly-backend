@@ -2,6 +2,7 @@ from .user import User
 from .household import Household
 from .household_membership import HouseholdMembership
 from .expense import Expense, ExpensePayment
+from .event_approval import EventApproval
 from .bill import Bill, BillPayment
 from .task import Task
 from .event import Event
@@ -25,6 +26,7 @@ __all__ = [
     "BillPayment",
     "Task",
     "Event",
+    "EventApproval",
     "GuestApproval",
     "Guest",
     "Announcement",
