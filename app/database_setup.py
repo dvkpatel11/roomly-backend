@@ -26,6 +26,10 @@ try:
         UserSchedule,
         ShoppingList,
         ShoppingItem,
+        HouseholdMembership,  # MISSING
+        ExpensePayment,  # MISSING
+        GuestApproval,  # MISSING
+        EventApproval,
     )
 
     print("📋 Creating all database tables...")

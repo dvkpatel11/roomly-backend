@@ -21,7 +21,6 @@ class User(Base):
 
     # Relationships
     household = relationship("Household", back_populates="members")
-    household_memberships = relationship("HouseholdMembership", back_populates="user")
 
     # Expenses
     created_expenses = relationship(
