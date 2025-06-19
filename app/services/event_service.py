@@ -1,12 +1,12 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc
-from typing import List, Dict, Any, Optional
+from sqlalchemy import and_
+from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from ..models.event import Event
 from ..models.rsvp import RSVP
 from ..models.user import User
-from ..schemas.event import EventCreate, EventUpdate
-from ..schemas.rsvp import RSVPCreate, RSVPUpdate
+from ..schemas.event import EventCreate
+from ..schemas.rsvp import RSVPCreate
 
 
 class EventService:

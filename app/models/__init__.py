@@ -4,7 +4,7 @@ from .household_membership import HouseholdMembership
 from .expense import Expense, ExpensePayment
 from .bill import Bill, BillPayment
 from .task import Task
-from .event import Event
+from .event import Event, GuestApproval
 from .guest import Guest
 from .announcement import Announcement
 from .poll import Poll, PollVote
@@ -24,6 +24,7 @@ __all__ = [
     "BillPayment",
     "Task",
     "Event",
+    "GuestApproval",
     "Guest",
     "Announcement",
     "Poll",
