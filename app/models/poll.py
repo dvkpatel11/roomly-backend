@@ -38,7 +38,9 @@ class Poll(Base):
     creator = relationship(
         "User", back_populates="created_polls", foreign_keys=[created_by]
     )
-    votes = relationship("PollVote", back_populates="poll")
+    votes = relationship(
+        "PollVote", back_populates="poll", cascade="all, delete-orphan"
+    )
 
 
 class PollVote(Base):

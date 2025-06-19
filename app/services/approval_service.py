@@ -6,6 +6,7 @@ from datetime import datetime
 from ..models.guest import Guest
 from ..models.event import Event
 from ..models.user import User
+from ..models.household_membership import HouseholdMembership
 from ..schemas.guest import GuestCreate
 from ..schemas.event import EventCreate
 
@@ -265,10 +266,17 @@ class ApprovalService:
 
         from ..models.guest_approval import GuestApproval
 
-        # Get all active household members
+        # FIXED: Get all active household members using HouseholdMembership
         members = (
             self.db.query(User)
-            .filter(and_(User.household_id == household_id, User.is_active == True))
+            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
+            .filter(
+                and_(
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                    User.is_active == True,
+                )
+            )
             .all()
         )
 
@@ -328,12 +336,17 @@ class ApprovalService:
         return True
 
     def _check_all_guest_approvals(self, guest_id: int, household_id: int) -> bool:
-        """FIXED: Check actual approval records"""
+        """FIXED: Check actual approval records using HouseholdMembership"""
 
-        # Get total household members
+        # Get total household members using proper relationship
         total_members = (
-            self.db.query(User)
-            .filter(and_(User.household_id == household_id, User.is_active == True))
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                )
+            )
             .count()
         )
 
@@ -356,23 +369,45 @@ class ApprovalService:
     def _get_pending_guest_approvals_count(
         self, guest_id: int, household_id: int
     ) -> int:
-        """Get count of pending approvals for guest"""
+        """FIXED: Get count of pending approvals for guest using HouseholdMembership"""
+
+        # Get total household members using proper relationship
         total_members = (
-            self.db.query(User)
-            .filter(User.household_id == household_id, User.is_active == True)
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                )
+            )
             .count()
         )
 
-        # TODO: Subtract actual approvals recorded
-        return max(0, total_members - 1)  # Mock: assume 1 approval recorded
+        # Get actual approvals recorded
+        approval_count = (
+            self.db.query(GuestApproval)
+            .filter(
+                and_(GuestApproval.guest_id == guest_id, GuestApproval.approved == True)
+            )
+            .count()
+        )
+
+        return max(0, total_members - approval_count)
 
     def _get_pending_event_approvals_count(
         self, event_id: int, household_id: int
     ) -> int:
-        """Get count of pending approvals for event"""
+        """FIXED: Get count of pending approvals for event using HouseholdMembership"""
+
+        # Get total household members using proper relationship
         total_members = (
-            self.db.query(User)
-            .filter(User.household_id == household_id, User.is_active == True)
+            self.db.query(HouseholdMembership)
+            .filter(
+                and_(
+                    HouseholdMembership.household_id == household_id,
+                    HouseholdMembership.is_active == True,
+                )
+            )
             .count()
         )
 

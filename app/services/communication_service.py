@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import and_, or_, desc, func
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, desc
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from ..models.announcement import Announcement

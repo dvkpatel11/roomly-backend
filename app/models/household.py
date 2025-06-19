@@ -16,7 +16,9 @@ class Household(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships - Use memberships instead of direct members
-    memberships = relationship("HouseholdMembership", back_populates="household")
+    memberships = relationship(
+        "HouseholdMembership", back_populates="household", cascade="all, delete-orphan"
+    )
     expenses = relationship("Expense", back_populates="household")
     bills = relationship("Bill", back_populates="household")
     tasks = relationship("Task", back_populates="household")

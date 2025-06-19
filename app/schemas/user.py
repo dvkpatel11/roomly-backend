@@ -21,7 +21,6 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    household_id: Optional[int]
     created_at: datetime
 
     class Config:

@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from ..database import Base
-from sqlalchemy import Index
+from sqlalchemy import Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 
@@ -21,4 +21,5 @@ class HouseholdMembership(Base):
 
     __table_args__ = (
         Index("idx_unique_household_member", "user_id", "household_id", unique=True),
+        UniqueConstraint("user_id", "household_id", name="uq_user_household"),
     )

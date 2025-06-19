@@ -42,4 +42,4 @@ class Event(Base):
     creator = relationship(
         "User", back_populates="created_events", foreign_keys=[created_by]
     )
-    rsvps = relationship("RSVP", back_populates="event")
+    rsvps = relationship("RSVP", back_populates="event", cascade="all, delete-orphan")
