@@ -1,9 +1,10 @@
+from app.models.guest_approval import GuestApproval
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from ..models.guest import Guest
-from ..models.event import Event, GuestApproval
+from ..models.event import Event
 from ..models.user import User
 from ..schemas.guest import GuestCreate
 from ..schemas.event import EventCreate
@@ -261,9 +262,26 @@ class ApprovalService:
 
     def _create_guest_approval_records(self, guest_id: int, household_id: int):
         """Create approval records for all household members"""
-        # In a full implementation, you'd have a GuestApproval table
-        # For now, we'll track this in memory or simplified logic
-        pass
+
+        from ..models.guest_approval import GuestApproval
+
+        # Get all active household members
+        members = (
+            self.db.query(User)
+            .filter(and_(User.household_id == household_id, User.is_active == True))
+            .all()
+        )
+
+        # Create approval record for each member
+        for member in members:
+            approval = GuestApproval(
+                guest_id=guest_id,
+                user_id=member.id,
+                approved=False,  # Starts as pending
+            )
+            self.db.add(approval)
+
+        self.db.commit()
 
     def _create_event_approval_records(self, event_id: int, household_id: int):
         """Create approval records for all household members"""
@@ -274,7 +292,32 @@ class ApprovalService:
         self, guest_id: int, user_id: int, approved: bool, reason: str = ""
     ) -> bool:
         """Record user's approval/denial of guest"""
-        # Would update GuestApproval table
+
+        from ..models.guest_approval import GuestApproval
+
+        # Find existing approval record
+        approval = (
+            self.db.query(GuestApproval)
+            .filter(
+                and_(
+                    GuestApproval.guest_id == guest_id, GuestApproval.user_id == user_id
+                )
+            )
+            .first()
+        )
+
+        if not approval:
+            return False  # No approval record found
+
+        if approval.approved is not None:
+            return False  # Already voted
+
+        # Record the vote
+        approval.approved = approved
+        approval.reason = reason
+        approval.created_at = datetime.utcnow()
+
+        self.db.commit()
         return True
 
     def _record_event_approval(
