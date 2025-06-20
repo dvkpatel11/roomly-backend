@@ -1,19 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 from ..database import get_db
 from ..services.billing_service import BillingService
-from ..schemas.bill import BillCreate, BillUpdate, BillResponse
+from ..schemas.bill import BillCreate, BillUpdate
 from ..dependencies.permissions import require_household_member, require_household_admin
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
-    validate_pagination,
 )
 from ..models.user import User
 from ..utils.constants import AppConstants
 
-router = APIRouter(prefix="/bills", tags=["bills"])
+router = APIRouter(tags=["bills"])
 
 
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)

@@ -1,6 +1,6 @@
-from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func, and_, desc, or_
-from typing import List, Dict, Any, Optional, Union
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, desc
+from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from ..models.task import Task
 from ..models.user import User
@@ -11,9 +11,7 @@ from ..schemas.task import (
     TaskUpdate,
     TaskComplete,
     RecurrencePattern,
-    TaskPriority,
 )
-import calendar
 from dataclasses import dataclass
 
 

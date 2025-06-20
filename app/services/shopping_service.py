@@ -7,9 +7,7 @@ from ..models.user import User
 from ..models.household_membership import HouseholdMembership
 from ..schemas.shopping_list import (
     ShoppingListCreate,
-    ShoppingListUpdate,
     ShoppingItemCreate,
-    ShoppingItemUpdate,
 )
 from .expense_service import ExpenseService
 

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from ..database import get_db
 from ..services.dashboard_service import DashboardService
 from ..services.household_service import HouseholdService
@@ -14,9 +14,8 @@ from ..utils.router_helpers import (
     RouterResponse,
 )
 from ..models.user import User
-from ..utils.constants import AppConstants
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(tags=["dashboard"])
 
 
 @router.get("/", response_model=Dict[str, Any])

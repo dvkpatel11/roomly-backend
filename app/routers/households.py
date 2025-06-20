@@ -20,7 +20,7 @@ from ..models.user import User
 from ..models.enums import HouseholdRole
 from .auth import get_current_user
 
-router = APIRouter(prefix="/households", tags=["households"])
+router = APIRouter(tags=["households"])
 
 
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)

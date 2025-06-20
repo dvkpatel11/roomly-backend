@@ -1,17 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from ..database import get_db
 from ..services.expense_service import ExpenseService
 from ..schemas.expense import (
     ExpenseCreate,
     ExpenseUpdate,
-    ExpenseResponse,
-    ExpenseSplitCalculation,
     SplitMethod,
     ExpenseCategory,
 )
-from ..dependencies.permissions import require_household_member, require_household_admin
+from ..dependencies.permissions import require_household_member
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
@@ -20,7 +18,7 @@ from ..utils.router_helpers import (
 from ..models.user import User
 from ..utils.constants import AppConstants
 
-router = APIRouter(prefix="/expenses", tags=["expenses"])
+router = APIRouter(tags=["expenses"])
 
 
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)

@@ -18,7 +18,7 @@ from ..utils.router_helpers import handle_service_errors, RouterResponse
 from jose import JWTError, jwt
 import os
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
+router = APIRouter(tags=["authentication"])
 security = HTTPBearer()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")

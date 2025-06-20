@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from ..database import get_db
 from ..services.task_service import TaskService
 from ..schemas.task import (
@@ -8,20 +8,18 @@ from ..schemas.task import (
     TaskUpdate,
     TaskComplete,
     TaskResponse,
-    TaskLeaderboard,
 )
 from ..dependencies.permissions import require_household_member, require_household_admin
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
-    create_pagination_response,
     validate_pagination,
 )
 from ..models.user import User
 from ..models.enums import TaskStatus
 from ..utils.constants import AppConstants
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+router = APIRouter(tags=["tasks"])
 
 
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)

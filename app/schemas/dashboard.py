@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-from datetime import datetime, date
+from datetime import datetime
 
 class FinancialSummary(BaseModel):
     total_owed: float

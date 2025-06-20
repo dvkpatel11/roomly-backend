@@ -36,7 +36,7 @@ from ..utils.background_tasks import (
 from sqlalchemy import and_
 from .auth import get_current_user
 
-router = APIRouter(prefix="/notifications", tags=["notifications"])
+router = APIRouter(tags=["notifications"])
 
 
 @router.get("/", response_model=Dict[str, Any])

@@ -1,15 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from ..database import get_db
 from ..services.communication_service import CommunicationService
 from ..services.household_service import HouseholdService
 from ..schemas.announcement import (
     AnnouncementCreate,
     AnnouncementUpdate,
-    AnnouncementResponse,
 )
-from ..schemas.poll import PollCreate, PollUpdate, PollVoteCreate, PollResponse
+from ..schemas.poll import PollCreate, PollUpdate, PollVoteCreate
 from ..dependencies.permissions import require_household_member, require_household_admin
 from ..utils.router_helpers import (
     handle_service_errors,
@@ -19,7 +18,7 @@ from ..utils.router_helpers import (
 from ..models.user import User
 from ..utils.constants import AppConstants
 
-router = APIRouter(prefix="/communications", tags=["communications"])
+router = APIRouter(tags=["communications"])
 
 
 # ANNOUNCEMENTS

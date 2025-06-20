@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from ..database import get_db
 from ..services.approval_service import ApprovalService
-from ..schemas.guest import GuestCreate, GuestResponse
+from ..schemas.guest import GuestCreate
 from ..dependencies.permissions import require_household_member, require_household_admin
 from ..utils.router_helpers import (
     handle_service_errors,
@@ -13,7 +13,7 @@ from ..utils.router_helpers import (
 from ..models.user import User
 from ..utils.constants import AppConstants, GuestPolicy
 
-router = APIRouter(prefix="/guests", tags=["guests"])
+router = APIRouter(tags=["guests"])
 
 
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)

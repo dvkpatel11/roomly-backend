@@ -1,13 +1,11 @@
 # Additional methods to add to your HouseholdService class
 
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
-from decimal import Decimal
+from typing import List, Dict, Any
 from ..models.expense import Expense
 from ..models.task import Task
 from ..models.security_deposit import SecurityDeposit
 from ..models.damage_report import DamageReport
-from ..models.move_out_checklist import MoveOutChecklist
 
 
 class MoveOutService:

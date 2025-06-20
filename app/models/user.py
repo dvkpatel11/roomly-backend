@@ -1,4 +1,3 @@
-from app.models.enums import HouseholdRole
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

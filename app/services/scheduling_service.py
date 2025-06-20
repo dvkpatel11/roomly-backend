@@ -1,10 +1,9 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from ..models.task import Task
 from ..models.event import Event
-from ..models.user_schedule import UserSchedule
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
 

@@ -1,19 +1,14 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, desc
-from typing import Dict, Any, List, Optional
+from sqlalchemy import and_, desc
+from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from ..models.task import Task
-from ..models.expense import Expense, ExpensePayment
-from ..models.bill import Bill
-from ..models.event import Event
+from ..models.expense import Expense
 from ..models.guest import Guest
 from ..models.announcement import Announcement
-from ..models.poll import Poll
-from ..models.notification import Notification
-from ..models.shopping_list import ShoppingList
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
-from ..models.enums import TaskStatus, EventStatus
+from ..models.enums import TaskStatus
 from .household_service import HouseholdService
 from .expense_service import ExpenseService
 from .billing_service import BillingService

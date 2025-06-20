@@ -2,18 +2,18 @@ from app.dependencies.permissions import require_household_member
 from app.utils.router_helpers import handle_service_errors
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 from ..database import get_db
 from ..services.event_service import EventService
 from ..services.scheduling_service import SchedulingService
 from ..services.approval_service import ApprovalService
-from ..schemas.event import EventCreate, EventUpdate, EventResponse
-from ..schemas.rsvp import RSVPCreate, RSVPUpdate, RSVPResponse
+from ..schemas.event import EventCreate
+from ..schemas.rsvp import RSVPCreate, RSVPResponse
 from .auth import get_current_user
 from ..models.user import User
 
-router = APIRouter(prefix="/events", tags=["events"])
+router = APIRouter(tags=["events"])
 
 
 @router.post("/", response_model=Dict[str, Any])

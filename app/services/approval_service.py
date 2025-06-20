@@ -1,7 +1,7 @@
 from app.models.guest_approval import GuestApproval
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 from ..models.guest import Guest
 from ..models.event import Event
