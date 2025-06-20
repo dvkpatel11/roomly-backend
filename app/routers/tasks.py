@@ -15,9 +15,11 @@ from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
     create_pagination_response,
+    validate_pagination,
 )
 from ..models.user import User
 from ..models.enums import TaskStatus
+from ..utils.constants import AppConstants
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -42,6 +44,7 @@ async def create_task(
         created_by=current_user.id,
         use_rotation=use_rotation,
     )
+
     return task
 
 
@@ -52,8 +55,8 @@ async def get_household_tasks(
     assigned_to: Optional[int] = Query(None, description="Filter by assignee"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     overdue_only: bool = Query(False, description="Show only overdue tasks"),
-    limit: int = Query(50, le=100, description="Number of tasks to return"),
-    offset: int = Query(0, ge=0, description="Number of tasks to skip"),
+    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -61,7 +64,10 @@ async def get_household_tasks(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
-    tasks = task_service.get_household_tasks(
+    # Validate pagination
+    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
+
+    result = task_service.get_household_tasks(
         household_id=household_id,
         user_id=current_user.id,
         limit=limit,
@@ -71,12 +77,13 @@ async def get_household_tasks(
         priority=priority,
         overdue_only=overdue_only,
     )
-    return tasks
+
+    return RouterResponse.success(data=result)
 
 
-@router.get("/my-tasks", response_model=Dict[str, Any])
+@router.get("/me", response_model=Dict[str, Any])
 @handle_service_errors
-async def get_my_tasks(
+async def get_my_task_summary(
     include_completed: bool = Query(False, description="Include completed tasks"),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
@@ -88,7 +95,8 @@ async def get_my_tasks(
     summary = task_service.get_user_task_summary(
         user_id=current_user.id, household_id=household_id
     )
-    return summary
+
+    return RouterResponse.success(data=summary)
 
 
 @router.get("/{task_id}", response_model=Dict[str, Any])
@@ -102,34 +110,58 @@ async def get_task_details(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
-    # Get the specific task - this should be a proper service method
-    # For now, we'll use the existing method and filter
-    tasks_response = task_service.get_household_tasks(
-        household_id=household_id,
-        user_id=current_user.id,
-        limit=1000,  # Get all tasks to find the specific one
-        offset=0,
-    )
+    # TODO: Add get_task_by_id method to TaskService for efficiency
+    # For now, use existing method but this should be optimized
+    try:
+        # Get specific task using the internal method (needs to be added to service)
+        task = task_service._get_task_or_raise(task_id)
 
-    task = next((t for t in tasks_response["tasks"] if t["id"] == task_id), None)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
+        # Verify user has access to this task's household
+        if task.household_id != household_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this task",
+            )
 
-    # Add additional task details that might not be in the list view
-    task_details = {
-        "task": task,
-        "can_edit": current_user.id == task["assigned_to"]
-        or current_user.id == task["created_by"],
-        "can_complete": current_user.id == task["assigned_to"],
-        "can_reassign": current_user.id == task["created_by"],
-    }
+        # Build detailed response
+        task_details = {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "priority": task.priority,
+            "status": task.status,
+            "points": task.points,
+            "assigned_to": task.assigned_to,
+            "created_by": task.created_by,
+            "due_date": task.due_date,
+            "estimated_duration": task.estimated_duration,
+            "recurring": task.recurring,
+            "recurrence_pattern": task.recurrence_pattern,
+            "completion_notes": task.completion_notes,
+            "photo_proof_url": task.photo_proof_url,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+            "completed_at": task.completed_at,
+            # Permission flags
+            "can_edit": (
+                current_user.id == task.assigned_to
+                or current_user.id == task.created_by
+            ),
+            "can_complete": current_user.id == task.assigned_to,
+            "can_reassign": current_user.id == task.created_by,
+        }
 
-    return task_details
+        return RouterResponse.success(data={"task": task_details})
+
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+        raise
 
 
-@router.put("/{task_id}", response_model=TaskResponse)
+@router.put("/{task_id}", response_model=Dict[str, Any])
 @handle_service_errors
 async def update_task(
     task_id: int,
@@ -144,7 +176,8 @@ async def update_task(
     task = task_service.update_task(
         task_id=task_id, task_updates=task_updates, updated_by=current_user.id
     )
-    return task
+
+    return RouterResponse.updated(data={"task": task})
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -178,20 +211,25 @@ async def complete_task(
     )
 
     return RouterResponse.success(
-        {
-            "task": task,
+        data={
+            "task": {
+                "id": task.id,
+                "title": task.title,
+                "status": task.status,
+                "completed_at": task.completed_at,
+            },
             "points_earned": task.points,
             "completion_time": task.completed_at,
         },
-        "Task completed successfully",
+        message="Task completed successfully",
     )
 
 
-@router.put("/{task_id}/status", response_model=TaskResponse)
+@router.put("/{task_id}/status", response_model=Dict[str, Any])
 @handle_service_errors
 async def update_task_status(
     task_id: int,
-    new_status: TaskStatus,
+    status_data: Dict[str, str] = Body(..., example={"status": "in_progress"}),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -199,18 +237,28 @@ async def update_task_status(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
+    # Validate status
+    new_status = status_data.get("status")
+    if new_status not in [s.value for s in TaskStatus]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status. Must be one of: {[s.value for s in TaskStatus]}",
+        )
+
     task = task_service.update_task_status(
-        task_id=task_id, new_status=new_status.value, user_id=current_user.id
+        task_id=task_id, new_status=new_status, user_id=current_user.id
     )
-    return task
+
+    return RouterResponse.updated(data={"task": task})
 
 
-@router.put("/{task_id}/reassign", response_model=TaskResponse)
+@router.put("/{task_id}/reassign", response_model=Dict[str, Any])
 @handle_service_errors
 async def reassign_task(
     task_id: int,
-    new_assignee_id: int = Body(..., description="ID of the new assignee"),
-    reason: Optional[str] = Body(None, description="Reason for reassignment"),
+    reassign_data: Dict[str, Any] = Body(
+        ..., example={"new_assignee_id": 2, "reason": "Better availability"}
+    ),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -218,15 +266,25 @@ async def reassign_task(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
+    new_assignee_id = reassign_data.get("new_assignee_id")
+    if not new_assignee_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="new_assignee_id is required",
+        )
+
     task = task_service.reassign_task(
         task_id=task_id,
         new_assignee_id=new_assignee_id,
         reassigned_by=current_user.id,
     )
-    return task
+
+    return RouterResponse.updated(
+        data={"task": task}, message=f"Task reassigned successfully"
+    )
 
 
-@router.get("/leaderboard/current", response_model=List[Dict[str, Any]])
+@router.get("/leaderboard/current", response_model=Dict[str, Any])
 @handle_service_errors
 async def get_task_leaderboard(
     month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
@@ -241,10 +299,18 @@ async def get_task_leaderboard(
     leaderboard = task_service.get_household_leaderboard(
         household_id=household_id, user_id=current_user.id, month=month, year=year
     )
-    return leaderboard
+
+    return RouterResponse.success(
+        data={
+            "leaderboard": leaderboard,
+            "month": month,
+            "year": year,
+            "total_members": len(leaderboard),
+        }
+    )
 
 
-@router.get("/user/score", response_model=Dict[str, Any])
+@router.get("/me/score", response_model=Dict[str, Any])
 @handle_service_errors
 async def get_my_task_score(
     month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
@@ -259,7 +325,8 @@ async def get_my_task_score(
     score = task_service.get_user_task_score(
         user_id=current_user.id, household_id=household_id, month=month, year=year
     )
-    return score
+
+    return RouterResponse.success(data=score)
 
 
 @router.get("/rotation/schedule", response_model=Dict[str, Any])
@@ -276,12 +343,13 @@ async def get_rotation_schedule(
     schedule = task_service.get_rotation_schedule(
         household_id=household_id, user_id=current_user.id, weeks_ahead=weeks_ahead
     )
-    return schedule
+
+    return RouterResponse.success(data=schedule)
 
 
-@router.get("/overdue/all", response_model=Dict[str, Any])
+@router.get("/overdue", response_model=Dict[str, Any])
 @handle_service_errors
-async def get_all_overdue_tasks(
+async def get_overdue_tasks(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -292,10 +360,13 @@ async def get_all_overdue_tasks(
     overdue_tasks = task_service.get_overdue_tasks_for_reminders(
         household_id=household_id
     )
-    return {"overdue_tasks": overdue_tasks}
+
+    return RouterResponse.success(
+        data={"overdue_tasks": overdue_tasks, "count": len(overdue_tasks)}
+    )
 
 
-@router.get("/categories", response_model=List[Dict[str, str]])
+@router.get("/config/priorities", response_model=Dict[str, Any])
 async def get_task_priorities():
     """Get available task priority levels"""
     from ..schemas.task import TaskPriority
@@ -304,32 +375,52 @@ async def get_task_priorities():
         {"value": priority.value, "label": priority.value.replace("_", " ").title()}
         for priority in TaskPriority
     ]
-    return priorities
+
+    return RouterResponse.success(data={"priorities": priorities})
 
 
-@router.get("/statuses", response_model=List[Dict[str, str]])
+@router.get("/config/statuses", response_model=Dict[str, Any])
 async def get_task_statuses():
     """Get available task status options"""
-    from ..models.enums import TaskStatus
-
     statuses = [
         {"value": status.value, "label": status.value.replace("_", " ").title()}
         for status in TaskStatus
     ]
-    return statuses
+
+    return RouterResponse.success(data={"statuses": statuses})
 
 
-@router.post("/bulk-assign", response_model=Dict[str, Any])
+@router.post("/bulk/reassign", response_model=Dict[str, Any])
 @handle_service_errors
-async def bulk_assign_tasks(
-    task_ids: List[int] = Body(..., description="List of task IDs to reassign"),
-    new_assignee_id: int = Body(..., description="ID of the new assignee"),
+async def bulk_reassign_tasks(
+    bulk_data: Dict[str, Any] = Body(
+        ...,
+        example={
+            "task_ids": [1, 2, 3],
+            "new_assignee_id": 2,
+            "reason": "Workload rebalancing",
+        },
+    ),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_admin),  # Admin only
 ):
     """Bulk reassign multiple tasks to a user (admin only)"""
     current_user, household_id = user_household
     task_service = TaskService(db)
+
+    task_ids = bulk_data.get("task_ids", [])
+    new_assignee_id = bulk_data.get("new_assignee_id")
+
+    if not task_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="task_ids list is required"
+        )
+
+    if not new_assignee_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="new_assignee_id is required",
+        )
 
     updated_tasks = []
     failed_tasks = []
@@ -345,36 +436,14 @@ async def bulk_assign_tasks(
         except Exception as e:
             failed_tasks.append({"task_id": task_id, "error": str(e)})
 
-    return {
-        "message": f"Bulk assignment completed",
-        "updated_count": len(updated_tasks),
-        "failed_count": len(failed_tasks),
-        "updated_tasks": updated_tasks,
-        "failed_tasks": failed_tasks,
-    }
-
-
-# Admin-only endpoints
-@router.post("/admin/reset-points", response_model=Dict[str, Any])
-@handle_service_errors
-async def reset_monthly_points(
-    confirm: bool = Body(False, description="Confirmation flag"),
-    db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_admin),
-):
-    """Reset monthly points for all household members (admin only)"""
-    current_user, household_id = user_household
-
-    if not confirm:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Must confirm point reset by setting confirm=true",
-        )
-
-    # This would need to be implemented in TaskService
     return RouterResponse.success(
-        message="Monthly points reset functionality not yet implemented",
-        data={"household_id": household_id, "reset_by": current_user.id},
+        data={
+            "updated_count": len(updated_tasks),
+            "failed_count": len(failed_tasks),
+            "updated_tasks": updated_tasks,
+            "failed_tasks": failed_tasks,
+        },
+        message=f"Bulk reassignment completed: {len(updated_tasks)} successful, {len(failed_tasks)} failed",
     )
 
 
@@ -387,11 +456,9 @@ async def get_household_task_statistics(
 ):
     """Get comprehensive task statistics for household"""
     current_user, household_id = user_household
-
-    # Get basic stats using existing methods
     task_service = TaskService(db)
 
-    # Get leaderboard for current month
+    # Get current month leaderboard
     leaderboard = task_service.get_household_leaderboard(
         household_id=household_id, user_id=current_user.id
     )
@@ -399,7 +466,7 @@ async def get_household_task_statistics(
     # Get overdue tasks
     overdue_tasks = task_service.get_overdue_tasks_for_reminders(household_id)
 
-    # Calculate basic statistics
+    # Calculate statistics
     total_members = len(leaderboard) if leaderboard else 0
     total_completed_tasks = sum(
         entry.get("tasks_completed", 0) for entry in leaderboard
@@ -411,7 +478,7 @@ async def get_household_task_statistics(
         else 0
     )
 
-    return {
+    statistics = {
         "household_id": household_id,
         "period_months": months_back,
         "total_members": total_members,
@@ -421,5 +488,6 @@ async def get_household_task_statistics(
         "overdue_tasks_count": len(overdue_tasks),
         "leaderboard_preview": leaderboard[:3],  # Top 3
         "most_productive_member": leaderboard[0] if leaderboard else None,
-        "generated_at": "2024-01-01T00:00:00Z",  # This would be datetime.utcnow()
     }
+
+    return RouterResponse.success(data=statistics)

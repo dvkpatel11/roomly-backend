@@ -39,7 +39,7 @@ app.include_router(
 app.include_router(routers.expenses.router, prefix="/api/expenses", tags=["expenses"])
 app.include_router(routers.bills.router, prefix="/api/bills", tags=["bills"])
 app.include_router(routers.tasks.router, prefix="/api/tasks", tags=["tasks"])
-app.include_router(routers.calendar.router, prefix="/api/calendar", tags=["calendar"])
+app.include_router(routers.event.router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(routers.guests.router, prefix="/api/guests", tags=["guests"])
 app.include_router(
     routers.communications.router, prefix="/api/communications", tags=["communications"]

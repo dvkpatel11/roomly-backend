@@ -1,187 +1,440 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..database import get_db
 from ..services.household_service import HouseholdService
 from ..schemas.household import (
-    HouseholdCreate, HouseholdUpdate, HouseholdResponse,
-    HouseholdInvitation, HouseholdSummary
+    HouseholdCreate,
+    HouseholdUpdate,
+    HouseholdResponse,
+    HouseholdInvitation,
+    HouseholdSummary,
+    MemberRoleUpdate,
 )
-from .auth import get_current_user
+from ..dependencies.permissions import (
+    require_household_member,
+    require_household_admin,
+    require_specific_household_access,
+)
+from ..utils.router_helpers import (
+    handle_service_errors,
+    RouterResponse,
+    validate_pagination,
+)
 from ..models.user import User
+from ..models.enums import HouseholdRole
+from ..utils.constants import AppConstants
+from .auth import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix="/households", tags=["households"])
 
-@router.post("/", response_model=HouseholdResponse)
+
+@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@handle_service_errors
 async def create_household(
     household_data: HouseholdCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """Create a new household"""
-    try:
-        household_service = HouseholdService(db)
-        household = household_service.create_household(
-            household_data=household_data,
-            creator_id=current_user.id
-        )
-        return household
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    """Create a new household with current user as admin"""
+    household_service = HouseholdService(db)
 
-@router.get("/{household_id}")
+    household = household_service.create_household(
+        household_data=household_data, creator_id=current_user.id
+    )
+
+    return RouterResponse.created(
+        data={"household": household}, message="Household created successfully"
+    )
+
+
+@router.get("/me", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_my_household(
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    """Get current user's household information"""
+    current_user, household_id = user_household
+    household_service = HouseholdService(db)
+
+    details = household_service.get_household_details(household_id)
+
+    return RouterResponse.success(data={"household": details})
+
+
+@router.get("/{household_id}", response_model=Dict[str, Any])
+@handle_service_errors
 async def get_household_details(
     household_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_household: tuple[User, int] = Depends(
+        lambda household_id=household_id: require_specific_household_access(
+            household_id
+        )
+    ),
 ):
     """Get detailed household information"""
-    try:
-        # Check if user has access to this household
-        if current_user.household_id != household_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        household_service = HouseholdService(db)
-        details = household_service.get_household_details(household_id)
-        return details
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    current_user, _ = user_household
+    household_service = HouseholdService(db)
 
-@router.get("/")
-async def get_my_household(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get current user's household"""
-    if not current_user.household_id:
-        raise HTTPException(status_code=404, detail="User not in any household")
-    
-    return await get_household_details(current_user.household_id, db, current_user)
+    details = household_service.get_household_details(household_id)
 
-@router.put("/{household_id}")
-async def update_household(
-    household_id: int,
+    return RouterResponse.success(data={"household": details})
+
+
+@router.put("/me", response_model=Dict[str, Any])
+@handle_service_errors
+async def update_my_household(
     household_update: HouseholdUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_household: tuple[User, int] = Depends(require_household_admin),
 ):
-    """Update household settings"""
-    try:
-        # Check access and admin rights
-        if current_user.household_id != household_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        household_service = HouseholdService(db)
-        household = household_service.update_household_settings(
-            household_id=household_id,
-            settings_update=household_update
-        )
-        return household
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-@router.get("/{household_id}/members")
-async def get_household_members(
-    household_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get household members"""
-    if current_user.household_id != household_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    """Update current user's household settings (admin only)"""
+    current_user, household_id = user_household
     household_service = HouseholdService(db)
+
+    household = household_service.update_household_settings(
+        household_id=household_id,
+        settings_update=household_update,
+        updated_by=current_user.id,
+    )
+
+    return RouterResponse.updated(
+        data={"household": household}, message="Household updated successfully"
+    )
+
+
+@router.get("/me/members", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_my_household_members(
+    include_stats: bool = Query(False, description="Include member statistics"),
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    """Get household members with optional statistics"""
+    current_user, household_id = user_household
+    household_service = HouseholdService(db)
+
     members = household_service.get_household_members(household_id)
-    
-    return {"members": members}
 
-@router.post("/{household_id}/invite")
-async def invite_member(
-    household_id: int,
-    invitation: HouseholdInvitation,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Invite new member to household"""
-    if current_user.household_id != household_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    # This would integrate with email service to send invitation
-    return {"message": f"Invitation sent to {invitation.email}"}
+    return RouterResponse.success(
+        data={
+            "members": members,
+            "total_count": len(members),
+            "admin_count": len([m for m in members if m["role"] == "admin"]),
+            "active_count": len([m for m in members if m["is_active"]]),
+        }
+    )
 
-@router.post("/{household_id}/members/{user_id}")
-async def add_member(
-    household_id: int,
-    user_id: int,
-    role: str = "member",
+
+@router.post("/me/members", response_model=Dict[str, Any])
+@handle_service_errors
+async def add_member_to_my_household(
+    member_data: Dict[str, Any] = Body(..., example={"user_id": 2, "role": "member"}),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_household: tuple[User, int] = Depends(require_household_admin),
 ):
-    """Add user to household"""
-    if current_user.household_id != household_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    """Add user to household (admin only)"""
+    current_user, household_id = user_household
     household_service = HouseholdService(db)
-    success = household_service.add_member_to_household(
+
+    user_id = member_data.get("user_id")
+    role = member_data.get("role", "member")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required"
+        )
+
+    # Validate role
+    if role not in [r.value for r in HouseholdRole]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role. Must be one of: {[r.value for r in HouseholdRole]}",
+        )
+
+    result = household_service.add_member_to_household(
         household_id=household_id,
         user_id=user_id,
-        role=role
+        role=role,
+        added_by=current_user.id,
     )
-    
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to add member")
-    
-    return {"message": "Member added successfully"}
 
-@router.delete("/{household_id}/members/{user_id}")
-async def remove_member(
-    household_id: int,
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to add member"
+        )
+
+    return RouterResponse.success(
+        message=f"Member added successfully with role: {role}"
+    )
+
+
+@router.delete("/me/members/{user_id}", response_model=Dict[str, Any])
+@handle_service_errors
+async def remove_member_from_my_household(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_household: tuple[User, int] = Depends(require_household_admin),
 ):
-    """Remove member from household"""
-    if current_user.household_id != household_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    """Remove member from household (admin only)"""
+    current_user, household_id = user_household
     household_service = HouseholdService(db)
-    success = household_service.remove_member_from_household(
+
+    result = household_service.remove_member_from_household(
         household_id=household_id,
         user_id=user_id,
-        removed_by=current_user.id
+        removed_by=current_user.id,
     )
-    
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to remove member")
-    
-    return {"message": "Member removed successfully"}
 
-@router.get("/{household_id}/health-score")
-async def get_household_health_score(
-    household_id: int,
+    return RouterResponse.success(data=result, message="Member removal completed")
+
+
+@router.put("/me/members/{user_id}/role", response_model=Dict[str, Any])
+@handle_service_errors
+async def update_member_role(
+    user_id: int,
+    role_data: Dict[str, str] = Body(..., example={"role": "admin"}),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_household: tuple[User, int] = Depends(require_household_admin),
+):
+    """Update member role (admin only)"""
+    current_user, household_id = user_household
+    household_service = HouseholdService(db)
+
+    new_role = role_data.get("role")
+    if not new_role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="role is required"
+        )
+
+    # Validate role
+    if new_role not in [r.value for r in HouseholdRole]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role. Must be one of: {[r.value for r in HouseholdRole]}",
+        )
+
+    success = household_service.update_member_role(
+        household_id=household_id,
+        user_id=user_id,
+        new_role=new_role,
+        updated_by=current_user.id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to update member role",
+        )
+
+    return RouterResponse.updated(message=f"Member role updated to {new_role}")
+
+
+@router.get("/me/health-score", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_my_household_health_score(
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get household health score"""
-    if current_user.household_id != household_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    current_user, household_id = user_household
     household_service = HouseholdService(db)
-    health_score = household_service.calculate_household_health_score(household_id)
-    
-    return health_score
 
-@router.get("/{household_id}/statistics")
-async def get_household_statistics(
-    household_id: int,
+    health_score = household_service.calculate_household_health_score(household_id)
+
+    return RouterResponse.success(data={"health_score": health_score})
+
+
+@router.get("/me/statistics", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_my_household_statistics(
+    months_back: int = Query(6, ge=1, le=24, description="Months of data to analyze"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Get household statistics"""
-    if current_user.household_id != household_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    """Get comprehensive household statistics"""
+    current_user, household_id = user_household
     household_service = HouseholdService(db)
+
     stats = household_service.get_household_statistics(household_id)
-    
-    return stats
+
+    return RouterResponse.success(
+        data={
+            "statistics": stats,
+            "period_months": months_back,
+            "household_id": household_id,
+        }
+    )
+
+
+@router.post("/me/invite", response_model=Dict[str, Any])
+@handle_service_errors
+async def invite_member_to_household(
+    invitation: HouseholdInvitation,
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_admin),
+):
+    """Send invitation to join household (admin only)"""
+    current_user, household_id = user_household
+
+    # TODO: Integrate with email service to send actual invitation
+    # For now, return success message
+
+    return RouterResponse.success(
+        data={
+            "invitation": {
+                "email": invitation.email,
+                "role": invitation.role,
+                "invited_by": current_user.name,
+                "household_id": household_id,
+            }
+        },
+        message=f"Invitation sent to {invitation.email}",
+    )
+
+
+@router.post("/join", response_model=Dict[str, Any])
+@handle_service_errors
+async def join_household_by_invitation(
+    join_data: Dict[str, Any] = Body(
+        ..., example={"invitation_code": "abc123", "household_id": 1}
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Join household using invitation code"""
+    household_service = HouseholdService(db)
+
+    invitation_code = join_data.get("invitation_code")
+    household_id = join_data.get("household_id")
+
+    if not invitation_code or not household_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invitation_code and household_id are required",
+        )
+
+    # TODO: Validate invitation code
+    # For now, just add user as member
+
+    success = household_service.add_member_to_household(
+        household_id=household_id,
+        user_id=current_user.id,
+        role="member",
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to join household"
+        )
+
+    return RouterResponse.success(message="Successfully joined household")
+
+
+@router.post("/me/leave", response_model=Dict[str, Any])
+@handle_service_errors
+async def leave_my_household(
+    confirm: bool = Body(False, description="Confirmation flag"),
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    """Leave current household"""
+    current_user, household_id = user_household
+    household_service = HouseholdService(db)
+
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Must confirm leaving by setting confirm=true",
+        )
+
+    result = household_service.remove_member_from_household(
+        household_id=household_id,
+        user_id=current_user.id,
+        removed_by=current_user.id,  # Self-removal
+    )
+
+    return RouterResponse.success(data=result, message="Successfully left household")
+
+
+@router.post("/me/transfer-ownership", response_model=Dict[str, Any])
+@handle_service_errors
+async def transfer_household_ownership(
+    transfer_data: Dict[str, int] = Body(..., example={"new_admin_id": 2}),
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_admin),
+):
+    """Transfer household ownership to another member (admin only)"""
+    current_user, household_id = user_household
+    household_service = HouseholdService(db)
+
+    new_admin_id = transfer_data.get("new_admin_id")
+    if not new_admin_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="new_admin_id is required"
+        )
+
+    success = household_service.transfer_household_ownership(
+        household_id=household_id,
+        current_admin_id=current_user.id,
+        new_admin_id=new_admin_id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to transfer ownership",
+        )
+
+    return RouterResponse.success(
+        message="Household ownership transferred successfully"
+    )
+
+
+@router.get("/config/roles", response_model=Dict[str, Any])
+async def get_household_roles():
+    """Get available household roles"""
+    roles = [
+        {"value": role.value, "label": role.value.title()} for role in HouseholdRole
+    ]
+
+    return RouterResponse.success(data={"roles": roles})
+
+
+@router.get("/me/summary", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_household_summary(
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    """Get quick household summary for dashboard"""
+    current_user, household_id = user_household
+    household_service = HouseholdService(db)
+
+    # Get basic household info
+    details = household_service.get_household_details(household_id)
+    health_score = household_service.calculate_household_health_score(household_id)
+
+    summary = {
+        "household": {
+            "id": details["id"],
+            "name": details["name"],
+            "member_count": details["member_count"],
+            "user_role": next(
+                (m["role"] for m in details["members"] if m["id"] == current_user.id),
+                "member",
+            ),
+        },
+        "health_score": health_score["overall_score"],
+        "quick_stats": {
+            "active_members": details["member_count"],
+            "health_score": health_score["overall_score"],
+            "improvement_suggestions": health_score["improvement_suggestions"][
+                :2
+            ],  # Top 2
+        },
+    }
+
+    return RouterResponse.success(data=summary)

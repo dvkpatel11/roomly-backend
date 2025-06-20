@@ -6,7 +6,7 @@ from . import dashboard
 from . import expenses
 from . import bills
 from . import tasks
-from . import calendar
+from . import event
 from . import guests
 from . import communications
 from . import notifications
@@ -19,7 +19,7 @@ __all__ = [
     "expenses",
     "bills",
     "tasks",
-    "calendar",
+    "event",
     "guests",
     "communications",
     "notifications",
