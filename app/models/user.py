@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -12,9 +12,16 @@ class User(Base):
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    phone = Column(String)
+    phone = Column(String, index=True)  # Added index for better query performance
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Add unique constraint for phone numbers (excluding NULL values)
+    __table_args__ = (
+        UniqueConstraint(
+            "phone", name="uq_user_phone", sqlite_on_conflict="ABORT"
+        ),  # For SQLite
+    )
 
     # Relationships - Use household_memberships instead of direct household relationship
     household_memberships = relationship("HouseholdMembership", back_populates="user")

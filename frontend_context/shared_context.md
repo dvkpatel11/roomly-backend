@@ -1,3 +1,11 @@
+# Shared Context - Backend Context
+
+## Overview
+Common models, enums, authentication, and utilities used across all pages.
+
+## Related Files:
+## app/routers/auth.py
+```python
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -282,3 +290,178 @@ async def get_user_profile(
     }
 
     return RouterResponse.success(data=profile)
+```
+
+## app/models/enums.py
+```python
+from enum import Enum
+
+
+class HouseholdRole(str, Enum):
+    ADMIN = "admin"
+    MEMBER = "member"
+    GUEST = "guest"
+
+
+class EventStatus(str, Enum):
+    PENDING = "pending_approval"
+    PUBLISHED = "published"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+```
+
+## app/models/rsvp.py
+```python
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from ..database import Base
+
+
+class RSVP(Base):
+    __tablename__ = "rsvps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String, nullable=False)  # yes, no, maybe
+    guest_count = Column(Integer, default=1)  # How many people they're bringing
+    dietary_restrictions = Column(Text)
+    special_requests = Column(Text)
+    response_notes = Column(Text)
+
+    # Foreign Keys
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    event = relationship("Event", back_populates="rsvps")
+    user = relationship("User", back_populates="event_rsvps", foreign_keys=[user_id])
+```
+
+## app/models/event_approval.py
+```python
+from sqlalchemy import (
+    Column,
+    Integer,
+    DateTime,
+    ForeignKey,
+    Text,
+    Boolean,
+)
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from ..database import Base
+
+
+class EventApproval(Base):
+    __tablename__ = "event_approvals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    approved = Column(Boolean, nullable=False)
+    reason = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+
+    # Relationships
+    event = relationship("Event")
+    user = relationship("User")
+```
+
+## app/schemas/rsvp.py
+```python
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime
+from enum import Enum
+
+
+class RSVPStatus(str, Enum):
+    YES = "yes"
+    NO = "no"
+    MAYBE = "maybe"
+
+
+class RSVPBase(BaseModel):
+    status: RSVPStatus
+    guest_count: int = Field(1, ge=1, le=10, description="Number of people attending")
+    dietary_restrictions: Optional[str] = Field(None, max_length=300)
+    special_requests: Optional[str] = Field(None, max_length=300)
+    response_notes: Optional[str] = Field(None, max_length=500)
+
+
+class RSVPCreate(RSVPBase):
+    event_id: int
+
+
+class RSVPUpdate(BaseModel):
+    status: Optional[RSVPStatus] = None
+    guest_count: Optional[int] = Field(None, ge=1, le=10)
+    dietary_restrictions: Optional[str] = Field(None, max_length=300)
+    special_requests: Optional[str] = Field(None, max_length=300)
+    response_notes: Optional[str] = Field(None, max_length=500)
+
+
+class RSVPResponse(RSVPBase):
+    id: int
+    event_id: int
+    event_title: str
+    user_id: int
+    user_name: str
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class EventRSVPSummary(BaseModel):
+    event_id: int
+    event_title: str
+    total_responses: int
+    yes_count: int
+    no_count: int
+    maybe_count: int
+    total_guests: int
+    responses: List[RSVPResponse]
+
+
+class UserRSVPSummary(BaseModel):
+    user_id: int
+    upcoming_events: List[RSVPResponse]
+    past_events_count: int
+```
+
+## app/schemas/event_approval.py
+```python
+from typing import Optional
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+
+class EventApprovalCreate(BaseModel):
+    event_id: int
+    approved: bool
+    reason: Optional[str] = Field(None, max_length=500)
+
+
+class EventApprovalResponse(BaseModel):
+    id: int
+    event_id: int
+    user_id: int
+    user_name: str
+    approved: bool
+    reason: Optional[str]
+    created_at: datetime
+```
+
