@@ -64,6 +64,8 @@ async def get_household_details(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    household_service = HouseholdService(db)
+
     if not household_service.check_member_permissions(current_user.id, household_id):
         raise HTTPException(403, "Access denied")
 

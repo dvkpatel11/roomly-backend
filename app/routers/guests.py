@@ -1,3 +1,4 @@
+from app.services.guest_service import GuestService
 from fastapi import APIRouter, Depends, status, Query, Body
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
@@ -48,24 +49,11 @@ async def get_household_guests(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Get guests for household with filtering and pagination"""
-    current_user, household_id = user_household
-
-    # TODO: Add get_household_guests method to ApprovalService
-    # For now, return empty structure
-    guests = []
-
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
-    return RouterResponse.success(
-        data={
-            "guests": guests,
-            "total_count": len(guests),
-            "upcoming_only": upcoming_only,
-            "include_pending": include_pending,
-        }
+    guest_service = GuestService(db)
+    guests = guest_service.get_household_guests(
+        user_household[1], upcoming_only, include_pending, limit, offset
     )
+    return RouterResponse.success(data=guests)
 
 
 @router.get("/pending", response_model=Dict[str, Any])
