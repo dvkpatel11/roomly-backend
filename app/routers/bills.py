@@ -51,9 +51,7 @@ async def get_household_bills(
     current_user, household_id = user_household
     billing_service = BillingService(db)
 
-    # TODO: Add get_household_bills method to BillingService
-    # For now, return empty list with proper structure
-    bills = []
+    bills = billing_service.get_household_bills(household_id, active_only=True)
 
     return RouterResponse.success(
         data={
@@ -114,20 +112,16 @@ async def get_overdue_bills(
 async def get_bill_details(
     bill_id: int,
     db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get detailed bill information"""
-    current_user, household_id = user_household
     billing_service = BillingService(db)
 
-    # TODO: Add get_bill_details method to BillingService
-    # For now, get payment history as a proxy
-    history = billing_service.get_bill_payment_history(bill_id=bill_id)
+    details = billing_service.get_bill_details(bill_id)
 
     return RouterResponse.success(
         data={
             "bill_id": bill_id,
-            "payment_history": history,
+            "details": details,
         }
     )
 

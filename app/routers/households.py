@@ -1,29 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 from ..database import get_db
 from ..services.household_service import HouseholdService
 from ..schemas.household import (
     HouseholdCreate,
     HouseholdUpdate,
-    HouseholdResponse,
     HouseholdInvitation,
-    HouseholdSummary,
-    MemberRoleUpdate,
 )
 from ..dependencies.permissions import (
     require_household_member,
     require_household_admin,
-    require_specific_household_access,
 )
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
-    validate_pagination,
 )
 from ..models.user import User
 from ..models.enums import HouseholdRole
-from ..utils.constants import AppConstants
 from .auth import get_current_user
 
 router = APIRouter(prefix="/households", tags=["households"])
@@ -67,19 +61,14 @@ async def get_my_household(
 @handle_service_errors
 async def get_household_details(
     household_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(
-        lambda household_id=household_id: require_specific_household_access(
-            household_id
-        )
-    ),
 ):
-    """Get detailed household information"""
-    current_user, _ = user_household
+    if not household_service.check_member_permissions(current_user.id, household_id):
+        raise HTTPException(403, "Access denied")
+
     household_service = HouseholdService(db)
-
     details = household_service.get_household_details(household_id)
-
     return RouterResponse.success(data={"household": details})
 
 

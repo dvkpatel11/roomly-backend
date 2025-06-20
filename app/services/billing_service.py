@@ -1,6 +1,6 @@
 from app.models.household_membership import HouseholdMembership
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, desc
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from ..models.bill import Bill, BillPayment
@@ -8,7 +8,6 @@ from ..models.user import User
 from ..models.expense import Expense
 from ..schemas.bill import BillCreate, BillUpdate
 from ..utils.date_helpers import DateHelpers
-from ..utils.constants import AppConstants
 from .expense_service import ExpenseService
 from dataclasses import dataclass
 
@@ -401,3 +400,165 @@ class BillingService:
                 bill["amount_remaining"] for bill in overdue_bills
             ),
         }
+
+    def get_household_bills(
+        self,
+        household_id: int,
+        active_only: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Get household bills with filtering and pagination"""
+
+        query = self.db.query(Bill).filter(Bill.household_id == household_id)
+
+        if active_only:
+            query = query.filter(Bill.is_active == True)
+
+        # Get total count for pagination
+        total_count = query.count()
+
+        # Get bills with pagination
+        bills = query.order_by(desc(Bill.created_at)).offset(offset).limit(limit).all()
+
+        # Enrich with creator info and payment status
+        bill_list = []
+        for bill in bills:
+            creator = self.db.query(User).filter(User.id == bill.created_by).first()
+
+            # Get recent payment status
+            current_month = datetime.utcnow().strftime("%Y-%m")
+            payment_status = self._get_bill_payment_status(bill.id, current_month)
+
+            # Calculate next due date
+            next_due_date = self._get_next_due_date(bill)
+
+            bill_list.append(
+                {
+                    "id": bill.id,
+                    "name": bill.name,
+                    "amount": bill.amount,
+                    "category": bill.category,
+                    "due_day": bill.due_day,
+                    "split_method": bill.split_method,
+                    "is_active": bill.is_active,
+                    "notes": bill.notes,
+                    "created_by": bill.created_by,
+                    "created_by_name": creator.name if creator else "Unknown",
+                    "created_at": bill.created_at,
+                    "updated_at": bill.updated_at,
+                    "next_due_date": next_due_date,
+                    "current_month_status": {
+                        "total_paid": payment_status["total_paid"],
+                        "is_paid": payment_status["total_paid"] >= bill.amount,
+                        "payment_count": payment_status["payment_count"],
+                    },
+                }
+            )
+
+        return {
+            "bills": bill_list,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total_count,
+            "active_only": active_only,
+        }
+
+    def get_bill_details(self, bill_id: int) -> Dict[str, Any]:
+        """Get detailed bill information including payment history and split details"""
+
+        bill = self.db.query(Bill).filter(Bill.id == bill_id).first()
+        if not bill:
+            raise ValueError("Bill not found")
+
+        # Get creator info
+        creator = self.db.query(User).filter(User.id == bill.created_by).first()
+
+        # Get payment history
+        payment_history = self.get_bill_payment_history(bill_id, 12)
+
+        # Get upcoming instances for next 3 months
+        upcoming_due_dates = []
+        now = datetime.utcnow()
+        for i in range(3):
+            future_date = now + timedelta(days=i * 30)  # Approximate months
+            due_date = DateHelpers.get_bill_due_date(
+                future_date.year, future_date.month, bill.due_day
+            )
+            if due_date >= now:
+                month_key = due_date.strftime("%Y-%m")
+                payment_status = self._get_bill_payment_status(bill.id, month_key)
+
+                upcoming_due_dates.append(
+                    {
+                        "due_date": due_date,
+                        "month": month_key,
+                        "days_until_due": (due_date - now).days,
+                        "payment_status": payment_status,
+                        "is_paid": payment_status["total_paid"] >= bill.amount,
+                    }
+                )
+
+        # Calculate household members for split preview
+        household_members = self._get_household_members(bill.household_id)
+        split_preview = []
+
+        if bill.split_method and household_members:
+            # Calculate how this bill would be split
+            for member in household_members:
+                if bill.split_method == "equal_split":
+                    member_amount = bill.amount / len(household_members)
+                else:
+                    # For other split methods, show equal for preview
+                    member_amount = bill.amount / len(household_members)
+
+                split_preview.append(
+                    {
+                        "user_id": member.id,
+                        "user_name": member.name,
+                        "amount_owed": round(member_amount, 2),
+                    }
+                )
+
+        return {
+            "bill": {
+                "id": bill.id,
+                "name": bill.name,
+                "amount": bill.amount,
+                "category": bill.category,
+                "due_day": bill.due_day,
+                "split_method": bill.split_method,
+                "split_details": bill.split_details,
+                "is_active": bill.is_active,
+                "notes": bill.notes,
+                "created_by": bill.created_by,
+                "created_by_name": creator.name if creator else "Unknown",
+                "created_at": bill.created_at,
+                "updated_at": bill.updated_at,
+            },
+            "payment_history": payment_history,
+            "upcoming_due_dates": upcoming_due_dates,
+            "split_preview": split_preview,
+            "total_payments_all_time": sum(p["amount"] for p in payment_history),
+            "household_member_count": len(household_members),
+        }
+
+    def _get_next_due_date(self, bill: Bill) -> Optional[datetime]:
+        """Calculate next due date for a bill"""
+        now = datetime.utcnow()
+
+        # Try current month first
+        current_due = DateHelpers.get_bill_due_date(now.year, now.month, bill.due_day)
+        if current_due >= now:
+            return current_due
+
+        # Next month
+        if now.month == 12:
+            next_due = DateHelpers.get_bill_due_date(now.year + 1, 1, bill.due_day)
+        else:
+            next_due = DateHelpers.get_bill_due_date(
+                now.year, now.month + 1, bill.due_day
+            )
+
+        return next_due

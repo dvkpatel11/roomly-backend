@@ -34,6 +34,7 @@ from ..utils.background_tasks import (
     scheduler,
 )
 from sqlalchemy import and_
+from .auth import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -438,7 +439,3 @@ async def get_priority_levels():
     ]
 
     return RouterResponse.success(data={"priorities": priorities})
-
-
-# Import statements at the top
-from .auth import get_current_user

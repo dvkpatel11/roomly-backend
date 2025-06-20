@@ -1,7 +1,7 @@
 from passlib.context import CryptContext
-from jose import JWTError, jwt
+from jose import jwt
 from datetime import datetime, timedelta
-from fastapi import HTTPException, status, Depends
+from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import os
@@ -14,11 +14,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 security = HTTPBearer()
 
+
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password):
     return pwd_context.hash(password)
+
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -30,12 +33,13 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(None)  # This will be properly injected
+    db: Session = Depends(None),  # This will be properly injected
 ):
     """Get current authenticated user - import this from routers.auth instead"""
     # This function is now in routers/auth.py to avoid circular imports
     from .routers.auth import get_current_user as auth_get_current_user
-    return auth_get_current_user(credentials, db)
 
+    return auth_get_current_user(credentials, db)

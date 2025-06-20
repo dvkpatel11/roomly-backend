@@ -476,3 +476,296 @@ class ShoppingService:
                 len(completed_lists) / months_back if months_back > 0 else 0
             ),
         }
+
+    def update_shopping_list(
+        self, list_id: int, list_updates: Dict[str, Any]
+    ) -> ShoppingList:
+        """Update shopping list metadata"""
+
+        shopping_list = (
+            self.db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
+        )
+
+        if not shopping_list:
+            raise ValueError("Shopping list not found")
+
+        if shopping_list.completed_at:
+            raise ValueError("Cannot update completed shopping list")
+
+        try:
+            # Update allowed fields
+            allowed_fields = {
+                "name",
+                "description",
+                "store_name",
+                "planned_date",
+                "assigned_shopper",
+                "total_estimated_cost",
+            }
+
+            for field, value in list_updates.items():
+                if field in allowed_fields and value is not None:
+                    setattr(shopping_list, field, value)
+
+            shopping_list.updated_at = datetime.utcnow()
+            self.db.commit()
+            self.db.refresh(shopping_list)
+
+            return shopping_list
+
+        except Exception as e:
+            self.db.rollback()
+            raise ValueError(f"Failed to update shopping list: {str(e)}")
+
+    def delete_shopping_list(self, list_id: int, deleted_by: int) -> bool:
+        """Delete or deactivate a shopping list"""
+
+        shopping_list = (
+            self.db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
+        )
+
+        if not shopping_list:
+            return False
+
+        # Check if user has permission (creator or assigned shopper)
+        if (
+            shopping_list.created_by != deleted_by
+            and shopping_list.assigned_shopper != deleted_by
+        ):
+            raise PermissionError(
+                "Only creator or assigned shopper can delete this list"
+            )
+
+        try:
+            # Check if list has items
+            items_count = (
+                self.db.query(ShoppingItem)
+                .filter(ShoppingItem.shopping_list_id == list_id)
+                .count()
+            )
+
+            if items_count > 0:
+                # Deactivate instead of delete to preserve history
+                shopping_list.is_active = False
+                shopping_list.updated_at = datetime.utcnow()
+
+                # Add deletion note
+                if shopping_list.description:
+                    shopping_list.description += (
+                        f" (Deleted by user on {datetime.utcnow().date()})"
+                    )
+                else:
+                    shopping_list.description = (
+                        f"Deleted by user on {datetime.utcnow().date()}"
+                    )
+            else:
+                # Actually delete if no items
+                self.db.delete(shopping_list)
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            raise ValueError(f"Failed to delete shopping list: {str(e)}")
+
+    def remove_shopping_item(self, item_id: int, removed_by: int) -> bool:
+        """Remove an item from shopping list"""
+
+        item = self.db.query(ShoppingItem).filter(ShoppingItem.id == item_id).first()
+
+        if not item:
+            return False
+
+        # Get shopping list to check permissions
+        shopping_list = (
+            self.db.query(ShoppingList)
+            .filter(ShoppingList.id == item.shopping_list_id)
+            .first()
+        )
+
+        if not shopping_list:
+            return False
+
+        # Check permissions (creator, assigned shopper, or item requester)
+        allowed_users = {
+            shopping_list.created_by,
+            shopping_list.assigned_shopper,
+            item.requested_by,
+        }
+        if removed_by not in allowed_users:
+            raise PermissionError("Not authorized to remove this item")
+
+        if item.is_purchased:
+            raise ValueError("Cannot remove purchased items")
+
+        try:
+            self.db.delete(item)
+
+            # Update list estimated cost
+            self._update_list_estimated_cost(item.shopping_list_id)
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            raise ValueError(f"Failed to remove item: {str(e)}")
+
+    def get_all_shopping_lists(
+        self, household_id: int, limit: int = 50, offset: int = 0
+    ) -> Dict[str, Any]:
+        """Get all shopping lists (both active and completed) with pagination"""
+
+        query = (
+            self.db.query(ShoppingList)
+            .filter(ShoppingList.household_id == household_id)
+            .order_by(desc(ShoppingList.created_at))
+        )
+
+        # Get total count
+        total_count = query.count()
+
+        # Get lists with pagination
+        lists = query.offset(offset).limit(limit).all()
+
+        result = []
+        for shopping_list in lists:
+            # Get item counts
+            total_items = (
+                self.db.query(ShoppingItem)
+                .filter(ShoppingItem.shopping_list_id == shopping_list.id)
+                .count()
+            )
+
+            purchased_items = (
+                self.db.query(ShoppingItem)
+                .filter(
+                    and_(
+                        ShoppingItem.shopping_list_id == shopping_list.id,
+                        ShoppingItem.is_purchased == True,
+                    )
+                )
+                .count()
+            )
+
+            # Get creator and shopper info
+            creator = None
+            if shopping_list.created_by:
+                creator = (
+                    self.db.query(User)
+                    .filter(User.id == shopping_list.created_by)
+                    .first()
+                )
+
+            shopper = None
+            if shopping_list.assigned_shopper:
+                shopper = (
+                    self.db.query(User)
+                    .filter(User.id == shopping_list.assigned_shopper)
+                    .first()
+                )
+
+            result.append(
+                {
+                    "id": shopping_list.id,
+                    "name": shopping_list.name,
+                    "description": shopping_list.description,
+                    "store_name": shopping_list.store_name,
+                    "planned_date": shopping_list.planned_date,
+                    "is_active": shopping_list.is_active,
+                    "total_items": total_items,
+                    "purchased_items": purchased_items,
+                    "progress_percentage": (
+                        (purchased_items / total_items * 100) if total_items > 0 else 0
+                    ),
+                    "created_by": shopping_list.created_by,
+                    "creator_name": creator.name if creator else "Unknown",
+                    "assigned_shopper": shopping_list.assigned_shopper,
+                    "shopper_name": shopper.name if shopper else None,
+                    "total_estimated_cost": shopping_list.total_estimated_cost,
+                    "total_actual_cost": shopping_list.total_actual_cost,
+                    "created_at": shopping_list.created_at,
+                    "completed_at": shopping_list.completed_at,
+                    "updated_at": shopping_list.updated_at,
+                    "status": (
+                        "completed"
+                        if shopping_list.completed_at
+                        else "active" if shopping_list.is_active else "cancelled"
+                    ),
+                }
+            )
+
+        return {
+            "shopping_lists": result,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total_count,
+            "active_count": len([l for l in result if l["is_active"]]),
+            "completed_count": len([l for l in result if l["completed_at"]]),
+            "cancelled_count": len(
+                [l for l in result if not l["is_active"] and not l["completed_at"]]
+            ),
+        }
+
+    def update_shopping_item(
+        self, item_id: int, item_updates: Dict[str, Any], updated_by: int
+    ) -> ShoppingItem:
+        """Update shopping item details"""
+
+        item = self.db.query(ShoppingItem).filter(ShoppingItem.id == item_id).first()
+
+        if not item:
+            raise ValueError("Shopping item not found")
+
+        # Get shopping list to check permissions and status
+        shopping_list = (
+            self.db.query(ShoppingList)
+            .filter(ShoppingList.id == item.shopping_list_id)
+            .first()
+        )
+
+        if not shopping_list:
+            raise ValueError("Shopping list not found")
+
+        if shopping_list.completed_at:
+            raise ValueError("Cannot update items in completed shopping list")
+
+        # Check permissions (creator, assigned shopper, or item requester)
+        allowed_users = {
+            shopping_list.created_by,
+            shopping_list.assigned_shopper,
+            item.requested_by,
+        }
+        if updated_by not in allowed_users:
+            raise PermissionError("Not authorized to update this item")
+
+        try:
+            # Update allowed fields
+            allowed_fields = {
+                "name",
+                "quantity",
+                "category",
+                "estimated_cost",
+                "notes",
+                "is_urgent",
+            }
+
+            for field, value in item_updates.items():
+                if field in allowed_fields and value is not None:
+                    setattr(item, field, value)
+
+            item.updated_at = datetime.utcnow()
+            self.db.commit()
+
+            # Update list estimated cost if cost was changed
+            if "estimated_cost" in item_updates:
+                self._update_list_estimated_cost(item.shopping_list_id)
+
+            self.db.refresh(item)
+            return item
+
+        except Exception as e:
+            self.db.rollback()
+            raise ValueError(f"Failed to update item: {str(e)}")
