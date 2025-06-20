@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User
-from ..models.household import Household
+from ..services.household_service import HouseholdService
 from ..schemas.user import UserCreate, UserResponse
 from ..utils.security import verify_password, get_password_hash, create_access_token
 from ..utils.validation import ValidationHelpers
@@ -45,18 +45,25 @@ async def get_current_user(
     return user
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post(
+    "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     try:
         # Validate email format
         if not ValidationHelpers.validate_email(user_data.email):
-            raise HTTPException(status_code=400, detail="Invalid email format")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email format"
+            )
 
         # Check if user already exists
         existing_user = db.query(User).filter(User.email == user_data.email).first()
         if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
 
         # Create new user
         hashed_password = get_password_hash(user_data.password)
@@ -72,8 +79,14 @@ async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
         db.refresh(user)
 
         return user
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to create user")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user",
+        )
 
 
 @router.post("/login")
@@ -98,14 +111,17 @@ async def login(email: str, password: str, db: Session = Depends(get_db)):
         # Create access token
         access_token = create_access_token(data={"sub": str(user.id)})
 
-        # Get household info if user is in one
-        household_info = None
-        if user.household_id:
-            household = (
-                db.query(Household).filter(Household.id == user.household_id).first()
-            )
-            if household:
-                household_info = {"id": household.id, "name": household.name}
+        # Get household info using proper service
+        household_service = HouseholdService(db)
+        household_info = household_service.get_user_household_info(user.id)
+
+        # Format household info for response (keep original simple format)
+        household_data = None
+        if household_info:
+            household_data = {
+                "id": household_info["household_id"],
+                "name": household_info["household_name"],
+            }
 
         return {
             "access_token": access_token,
@@ -114,13 +130,15 @@ async def login(email: str, password: str, db: Session = Depends(get_db)):
                 "id": user.id,
                 "name": user.name,
                 "email": user.email,
-                "household": household_info,
+                "household": household_data,
             },
         }
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Login failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login failed"
+        )
 
 
 @router.get("/me", response_model=UserResponse)
