@@ -84,7 +84,7 @@ async def get_async_db_connection():
     """Get direct async PostgreSQL connection"""
     if not DATABASE_URL or "postgresql" not in DATABASE_URL:
         raise RuntimeError("PostgreSQL DATABASE_URL required for async operations")
-    
+
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
