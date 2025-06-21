@@ -48,7 +48,7 @@ cat > "$CALENDAR_OUTPUT" << 'EOF'
 # Calendar Page - Backend Context
 
 ## Overview
-Calendar handles scheduling, events, bill due dates, and user schedules.
+Calendar handles scheduling, events, bill due dates, etc.
 Frontend toggles: Schedule | Events
 
 ## Related Files:

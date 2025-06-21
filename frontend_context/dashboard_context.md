@@ -1,10 +1,13 @@
 # Dashboard Page - Backend Context
 
 ## Overview
+
 Dashboard aggregates household overview, financial summary, task status, and recent activity.
 
 ## Related Files:
+
 ## app/routers/dashboard.py
+
 ```python
 from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -625,6 +628,7 @@ async def dashboard_health_check(
 ```
 
 ## app/schemas/dashboard.py
+
 ```python
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -737,6 +741,7 @@ class MonthlyReport(BaseModel):
 ```
 
 ## app/models/household.py
+
 ```python
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
 from sqlalchemy.orm import relationship
@@ -791,6 +796,7 @@ class Household(Base):
 ```
 
 ## app/models/user.py
+
 ```python
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
@@ -870,9 +876,6 @@ class User(Base):
         "NotificationPreference", back_populates="user"
     )
 
-    # Schedules
-    personal_schedules = relationship("UserSchedule", back_populates="user")
-
     # Shopping
     created_shopping_lists = relationship(
         "ShoppingList", back_populates="creator", foreign_keys="ShoppingList.created_by"
@@ -904,4 +907,3 @@ class User(Base):
         )
         return membership.role if membership else None
 ```
-

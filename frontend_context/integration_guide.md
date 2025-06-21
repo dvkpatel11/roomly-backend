@@ -3,37 +3,44 @@
 ## Page to Context Mapping
 
 ### Dashboard Page
+
 - **Context File:** `dashboard_context.md`
 - **Key Endpoints:** Dashboard aggregation, household overview
 - **Primary Models:** Household, User, Dashboard summary
 
-### Calendar Page  
+### Calendar Page
+
 - **Context File:** `calendar_context.md`
 - **Key Endpoints:** Events, Bills, User schedules
-- **Primary Models:** Event, Bill, UserSchedule
+- **Primary Models:** Event, Bill,
 - **Frontend Toggles:** Schedule view | Events view
 
 ### Tasks Page
-- **Context File:** `tasks_context.md` 
+
+- **Context File:** `tasks_context.md`
 - **Key Endpoints:** Task CRUD, assignments, completion
 - **Primary Models:** Task
 
 ### Expenses Page
+
 - **Context File:** `expenses_context.md`
 - **Key Endpoints:** Expenses, Bills, payments
 - **Primary Models:** Expense, Bill
 
 ### Communication Page
+
 - **Context File:** `communication_context.md`
 - **Key Endpoints:** Announcements, Polls, Notifications
 - **Primary Models:** Announcement, Poll, Notification
 
 ### House Page
+
 - **Context File:** `house_context.md`
 - **Key Endpoints:** Guests, Shopping, Household settings
 - **Primary Models:** Guest, ShoppingList, Household
 
 ### Shared Context
+
 - **Context File:** `shared_context.md`
 - **Key Endpoints:** Authentication, Approvals
 - **Primary Models:** Enums, RSVP, EventApproval

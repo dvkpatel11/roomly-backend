@@ -1,11 +1,14 @@
 # Calendar Page - Backend Context
 
 ## Overview
+
 Calendar handles scheduling, events, bill due dates, and user schedules.
 Frontend toggles: Schedule | Events
 
 ## Related Files:
+
 ## app/routers/event.py
+
 ```python
 from app.dependencies.permissions import require_household_member
 from app.utils.router_helpers import handle_service_errors
@@ -284,6 +287,7 @@ async def get_event_statistics(
 ```
 
 ## app/routers/bills.py
+
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
@@ -573,6 +577,7 @@ async def get_split_methods():
 ```
 
 ## app/schemas/event.py
+
 ```python
 from pydantic import BaseModel, validator, Field
 from typing import Optional
@@ -655,6 +660,7 @@ class EventSummary(BaseModel):
 ```
 
 ## app/schemas/bill.py
+
 ```python
 from pydantic import BaseModel, validator
 from typing import Optional
@@ -715,6 +721,7 @@ __all__ = ["BillBase", "BillCreate", "BillUpdate", "BillResponse"]
 ```
 
 ## app/models/event.py
+
 ```python
 from app.models.enums import EventStatus
 from sqlalchemy import (
@@ -763,6 +770,7 @@ class Event(Base):
 ```
 
 ## app/models/bill.py
+
 ```python
 from sqlalchemy import (
     Column,
@@ -839,40 +847,10 @@ class BillPayment(Base):
     )
 ```
 
-## app/models/user_schedule.py
 ```python
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
 
-class UserSchedule(Base):
-    __tablename__ = "user_schedules"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)
-    description = Column(Text)
-    start_time = Column(DateTime, nullable=False)
-    end_time = Column(DateTime, nullable=False)
-    
-    # Schedule type and visibility
-    schedule_type = Column(String, nullable=False)  # work, personal, class, etc.
-    is_shared_with_household = Column(Boolean, default=False)
-    is_recurring = Column(Boolean, default=False)
-    recurrence_pattern = Column(String)  # daily, weekly, monthly
-    
-    # Location
-    location = Column(String)
-    is_at_home = Column(Boolean, default=False)
-    
-    # Foreign Keys
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
-    user = relationship("User", back_populates="personal_schedules", foreign_keys=[user_id])
 ```
-

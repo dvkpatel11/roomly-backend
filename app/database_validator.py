@@ -34,7 +34,6 @@ def validate_model_relationships():
         Notification,
         NotificationPreference,
         RSVP,
-        UserSchedule,
         ShoppingList,
         ShoppingItem,
     ]

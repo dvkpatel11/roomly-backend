@@ -27,7 +27,6 @@ try:
         Notification,
         NotificationPreference,
         RSVP,
-        UserSchedule,
         ShoppingList,
         ShoppingItem,
     )

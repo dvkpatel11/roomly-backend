@@ -76,9 +76,6 @@ class User(Base):
         "NotificationPreference", back_populates="user"
     )
 
-    # Schedules
-    personal_schedules = relationship("UserSchedule", back_populates="user")
-
     # Shopping
     created_shopping_lists = relationship(
         "ShoppingList", back_populates="creator", foreign_keys="ShoppingList.created_by"

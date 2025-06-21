@@ -12,7 +12,6 @@ from .announcement import Announcement
 from .poll import Poll, PollVote
 from .notification import Notification, NotificationPreference
 from .rsvp import RSVP
-from .user_schedule import UserSchedule
 from .shopping_list import ShoppingList, ShoppingItem
 
 
@@ -35,7 +34,6 @@ __all__ = [
     "Notification",
     "NotificationPreference",
     "RSVP",
-    "UserSchedule",
     "ShoppingList",
     "ShoppingItem",
 ]

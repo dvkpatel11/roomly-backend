@@ -101,7 +101,6 @@ roomly-backend/
 │   │   ├── poll.py            # House decision voting
 │   │   ├── notification.py    # Smart notifications
 │   │   ├── rsvp.py            # Event RSVP tracking
-│   │   ├── user_schedule.py   # Personal calendar sharing
 │   │   └── shopping_list.py   # Grocery coordination
 │   ├── routers/               # API route handlers
 │   │   ├── auth.py           # Authentication & user management

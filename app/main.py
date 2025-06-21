@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from .utils.background_tasks import start_background_tasks, stop_background_tasks
+import atexit
 
 try:
     # Import routers with proper module paths
@@ -31,6 +33,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks when app starts"""
+    print("🚀 Starting Roomly API with background notification system...")
+    start_background_tasks()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop background tasks when app shuts down"""
+    print("⏹️ Stopping background tasks...")
+    stop_background_tasks()
+
+
 # Include routers
 app.include_router(routers.auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(
@@ -51,6 +68,8 @@ app.include_router(routers.shopping.router, prefix="/api/shopping", tags=["shopp
 app.include_router(
     routers.households.router, prefix="/api/households", tags=["households"]
 )
+
+atexit.register(stop_background_tasks)
 
 
 @app.get("/")
