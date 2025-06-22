@@ -60,7 +60,7 @@ class DashboardService:
         user = self.db.query(User).filter(User.id == user_id).first()
         household_info = self.household_service.get_user_household_info(user_id)
 
-        # Get user's current streak and points
+        # Get user's current streak
         task_summary = self.task_service.get_user_task_summary(user_id, household_id)
 
         # Time-based greeting
@@ -79,7 +79,6 @@ class DashboardService:
             ),
             "user_role": household_info["user_role"] if household_info else "member",
             "current_streak": task_summary["current_streak"],
-            "total_points": task_summary["total_points_earned"],
             "is_admin": household_info["is_admin"] if household_info else False,
         }
 
@@ -169,7 +168,7 @@ class DashboardService:
                 {
                     "type": "overdue_task",
                     "title": f"Overdue: {task['title']}",
-                    "description": f"{task['days_overdue']} days past due • {task['points']} points",
+                    "description": f"{task['days_overdue']} days past due",
                     "priority": "medium",
                     "action_url": f"/tasks/{task['task_id']}",
                     "icon": "⏰",
@@ -304,7 +303,6 @@ class DashboardService:
             "personal_stats": {
                 "completion_rate": task_summary["completion_rate"],
                 "current_streak": task_summary["current_streak"],
-                "points_earned": task_summary["total_points_earned"],
                 "pending_tasks": task_summary["pending_count"],
                 "overdue_tasks": task_summary["overdue_count"],
             },
@@ -315,7 +313,6 @@ class DashboardService:
             "top_performers": [
                 {
                     "name": p["user_name"],
-                    "points": p["total_points"],
                     "completion_rate": p["completion_rate"],
                 }
                 for p in top_performers
@@ -391,7 +388,6 @@ class DashboardService:
                     "icon": "✅",
                     "message": f"{user_name} completed '{task.title}'",
                     "timestamp": task.completed_at,
-                    "metadata": {"points": task.points},
                 }
             )
 

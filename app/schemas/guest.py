@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
+
 class GuestBase(BaseModel):
     name: str
     phone: Optional[str] = None
@@ -11,9 +12,12 @@ class GuestBase(BaseModel):
     check_out: Optional[datetime] = None
     is_overnight: bool = False
     notes: Optional[str] = None
+    special_requests: Optional[str] = None
+
 
 class GuestCreate(GuestBase):
     pass
+
 
 class GuestResponse(GuestBase):
     id: int
@@ -22,6 +26,7 @@ class GuestResponse(GuestBase):
     is_approved: bool
     approved_by: Optional[int]
     created_at: datetime
-    
+    updated_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True

@@ -14,6 +14,9 @@ class HouseholdMembershipResponse(BaseModel):
     id: int
     user_id: int
     household_id: int
-    role: str
+    role: HouseholdRole  
     joined_at: datetime
     is_active: bool
+
+    class Config:
+        from_attributes = True

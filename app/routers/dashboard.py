@@ -95,7 +95,6 @@ async def get_quick_stats(
                 .replace("Good evening, ", "")
                 .replace("!", ""),
                 "current_streak": header.get("current_streak", 0),
-                "total_points": header.get("total_points", 0),
                 "role": header.get("user_role", "member"),
             },
         }
@@ -203,7 +202,6 @@ async def get_task_progress(
                 "total_members": task_progress.get("leaderboard_position", {}).get(
                     "total_members"
                 ),
-                "points_earned": personal_stats.get("points_earned", 0),
             },
         }
     )

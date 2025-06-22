@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator
-from typing import Optional
+from typing import Any, Dict, Optional
 from datetime import datetime
 
 
@@ -13,6 +13,8 @@ class BillBase(BaseModel):
 
 
 class BillCreate(BillBase):
+    split_details: Optional[Dict[str, Any]] = None
+
     @validator("due_day")
     def validate_due_day(cls, v):
         if not 1 <= v <= 31:
@@ -27,6 +29,7 @@ class BillUpdate(BaseModel):
     due_day: Optional[int] = None
     split_method: Optional[str] = None
     notes: Optional[str] = None
+    split_details: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
 
     @validator("due_day")
@@ -47,7 +50,9 @@ class BillResponse(BillBase):
     household_id: int
     created_by: int
     is_active: bool
+    split_details: Optional[Dict[str, Any]] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

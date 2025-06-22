@@ -92,11 +92,6 @@ class ValidationHelpers:
         return True
 
     @staticmethod
-    def validate_task_points(points: int) -> bool:
-        """Validate task points"""
-        return AppConstants.MIN_TASK_POINTS <= points <= AppConstants.MAX_TASK_POINTS
-
-    @staticmethod
     def validate_household_size(member_count: int) -> bool:
         """Validate household member count"""
         return 1 <= member_count <= AppConstants.MAX_HOUSEHOLD_MEMBERS
@@ -179,15 +174,6 @@ class CustomValidators:
         if v > AppConstants.MAX_EXPENSE_AMOUNT:
             raise ValueError(f"Amount cannot exceed ${AppConstants.MAX_EXPENSE_AMOUNT}")
         return round(v, AppConstants.CURRENCY_DECIMAL_PLACES)
-
-    @staticmethod
-    def validate_task_points(cls, v):
-        """Pydantic validator for task points"""
-        if not AppConstants.MIN_TASK_POINTS <= v <= AppConstants.MAX_TASK_POINTS:
-            raise ValueError(
-                f"Points must be between {AppConstants.MIN_TASK_POINTS} and {AppConstants.MAX_TASK_POINTS}"
-            )
-        return v
 
     @staticmethod
     def validate_email_format(cls, v):

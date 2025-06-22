@@ -405,7 +405,6 @@ class MockDataGenerator:
                     ),
                     priority=random.choice(priorities),
                     estimated_duration=random.randint(15, 240),  # 15 min to 4 hours
-                    points=random.randint(5, 50),
                     recurring=random.choice([True, False]),
                     recurrence_pattern=(
                         random.choice(["daily", "weekly", "monthly"])

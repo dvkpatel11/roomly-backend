@@ -317,7 +317,7 @@ class NotificationService:
             )
 
         title = f"Overdue Task: {task.title}"
-        message = f"Your task '{task.title}' was due {overdue_text} ago. Please complete it to earn {task.points} points!"
+        message = f"Your task '{task.title}' was due {overdue_text} ago!"
 
         self.create_notification(
             user_id=task.assigned_to,

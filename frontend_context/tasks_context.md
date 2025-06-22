@@ -1,10 +1,13 @@
 # Tasks Page - Backend Context
 
 ## Overview
+
 Task management with assignments, completion tracking, and chore scheduling.
 
 ## Related Files:
+
 ## app/routers/tasks.py
+
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
@@ -136,7 +139,6 @@ async def get_task_details(
             "description": task.description,
             "priority": task.priority,
             "status": task.status,
-            "points": task.points,
             "assigned_to": task.assigned_to,
             "created_by": task.created_by,
             "due_date": task.due_date,
@@ -208,7 +210,7 @@ async def complete_task(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Mark task as completed and award points"""
+    """Mark task as completed"""
     current_user, household_id = user_household
     task_service = TaskService(db)
 
@@ -224,7 +226,6 @@ async def complete_task(
                 "status": task.status,
                 "completed_at": task.completed_at,
             },
-            "points_earned": task.points,
             "completion_time": task.completed_at,
         },
         message="Task completed successfully",
@@ -477,7 +478,6 @@ async def get_household_task_statistics(
     total_completed_tasks = sum(
         entry.get("tasks_completed", 0) for entry in leaderboard
     )
-    total_points = sum(entry.get("total_points", 0) for entry in leaderboard)
     avg_completion_rate = (
         sum(entry.get("completion_rate", 0) for entry in leaderboard) / total_members
         if total_members > 0
@@ -489,7 +489,6 @@ async def get_household_task_statistics(
         "period_months": months_back,
         "total_members": total_members,
         "total_completed_tasks": total_completed_tasks,
-        "total_points_awarded": total_points,
         "average_completion_rate": round(avg_completion_rate, 1),
         "overdue_tasks_count": len(overdue_tasks),
         "leaderboard_preview": leaderboard[:3],  # Top 3
@@ -500,6 +499,7 @@ async def get_household_task_statistics(
 ```
 
 ## app/schemas/task.py
+
 ```python
 from pydantic import BaseModel, validator, Field
 from typing import Optional
@@ -530,7 +530,6 @@ class TaskBase(BaseModel):
     estimated_duration: Optional[int] = Field(
         None, gt=0, description="Duration in minutes"
     )
-    points: int = Field(10, ge=1, le=100, description="Points for completion")
 
 
 class TaskCreate(TaskBase):
@@ -555,7 +554,6 @@ class TaskUpdate(BaseModel):
     assigned_to: Optional[int] = None
     due_date: Optional[datetime] = None
     estimated_duration: Optional[int] = Field(None, gt=0)
-    points: Optional[int] = Field(None, ge=1, le=100)
 
 
 class TaskComplete(BaseModel):
@@ -589,13 +587,13 @@ class TaskResponse(TaskBase):
 class TaskLeaderboard(BaseModel):
     user_id: int
     user_name: str
-    total_points: int
     tasks_completed: int
     completion_rate: float
     current_streak: int
 ```
 
 ## app/models/task.py
+
 ```python
 from app.models.enums import TaskStatus
 from sqlalchemy import (
@@ -621,7 +619,6 @@ class Task(Base):
     description = Column(Text)
     priority = Column(String, default="normal")  # low, normal, high, urgent
     estimated_duration = Column(Integer)  # Duration in minutes
-    points = Column(Integer, default=10)
     recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)  # daily, weekly, monthly
     completion_notes = Column(Text)
@@ -652,4 +649,3 @@ class Task(Base):
         Index("idx_task_household_assigned", "household_id", "assigned_to"),
     )
 ```
-

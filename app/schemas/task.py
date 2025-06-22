@@ -27,7 +27,6 @@ class TaskBase(BaseModel):
     estimated_duration: Optional[int] = Field(
         None, gt=0, description="Duration in minutes"
     )
-    points: int = Field(10, ge=1, le=100, description="Points for completion")
 
 
 class TaskCreate(TaskBase):
@@ -52,7 +51,6 @@ class TaskUpdate(BaseModel):
     assigned_to: Optional[int] = None
     due_date: Optional[datetime] = None
     estimated_duration: Optional[int] = Field(None, gt=0)
-    points: Optional[int] = Field(None, ge=1, le=100)
 
 
 class TaskComplete(BaseModel):
@@ -86,7 +84,6 @@ class TaskResponse(TaskBase):
 class TaskLeaderboard(BaseModel):
     user_id: int
     user_name: str
-    total_points: int
     tasks_completed: int
     completion_rate: float
     current_streak: int

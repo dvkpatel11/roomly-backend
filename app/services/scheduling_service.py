@@ -47,7 +47,6 @@ class SchedulingService:
                     "title": task.title,
                     "due_date": task.due_date,
                     "priority": task.priority,
-                    "points": task.points,
                 }
             )
 
@@ -230,7 +229,7 @@ class SchedulingService:
 
         # Check recent completion rate (boost for good performers)
         recent_completion_rate = self._get_recent_completion_rate(user_id)
-        completion_bonus = (recent_completion_rate - 0.5) * 20  # -10 to +10 points
+        completion_bonus = (recent_completion_rate - 0.5) * 20
         score += completion_bonus
 
         # Prevent negative scores
@@ -379,7 +378,6 @@ class SchedulingService:
                             "due_time": task.due_date,
                             "assigned_to": task.assigned_to,
                             "priority": task.priority,
-                            "points": task.points,
                         }
                     )
 

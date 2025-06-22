@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from app.models.enums import HouseholdRole
 
 
 class HouseholdBase(BaseModel):
@@ -25,7 +26,7 @@ class HouseholdMember(BaseModel):
     email: str
     is_active: bool
     joined_at: datetime
-    role: str = "member"  # admin, member
+    role: HouseholdRole = "member"
 
 
 class HouseholdSettings(BaseModel):
@@ -43,7 +44,6 @@ class HouseholdSettings(BaseModel):
     }
     task_settings: Dict[str, Any] = {
         "rotation_enabled": True,
-        "point_system_enabled": True,
         "photo_proof_required": False,
     }
 
@@ -83,5 +83,3 @@ class HouseholdSummary(BaseModel):
     address: Optional[str]
     user_role: str
     joined_at: datetime
-
-

@@ -103,7 +103,6 @@ class TaskService:
                 description=task_data.description,
                 priority=task_data.priority.value,
                 estimated_duration=task_data.estimated_duration,
-                points=task_data.points,
                 assigned_to=assigned_to,
                 created_by=created_by,
                 household_id=household_id,
@@ -195,7 +194,7 @@ class TaskService:
     def complete_task(
         self, task_id: int, user_id: int, completion_data: TaskComplete
     ) -> Task:
-        """Mark task as completed and award points"""
+        """Mark task as completed"""
 
         task = self._get_task_or_raise(task_id)
 
@@ -217,9 +216,6 @@ class TaskService:
 
             # Keep completed boolean for backward compatibility
             task.completed = True
-
-            # Award points (could extend to separate points table)
-            self._award_points(user_id, task.points, task_id)
 
             self.db.commit()
             self.db.refresh(task)
@@ -251,7 +247,6 @@ class TaskService:
             if new_status == TaskStatus.COMPLETED.value:
                 task.completed = True
                 task.completed_at = datetime.utcnow()
-                self._award_points(user_id, task.points, task_id)
             elif (
                 task.status == TaskStatus.COMPLETED.value
                 and new_status != TaskStatus.COMPLETED.value
@@ -364,7 +359,6 @@ class TaskService:
                     "description": task.description,
                     "priority": task.priority,
                     "status": task.status,
-                    "points": task.points,
                     "assigned_to": task.assigned_to,
                     "assigned_to_name": assignee.name if assignee else "Unknown",
                     "created_by": task.created_by,
@@ -421,7 +415,6 @@ class TaskService:
             t for t in user_tasks if t.status == TaskStatus.IN_PROGRESS.value
         ]
 
-        total_points_earned = sum(t.points for t in completed_tasks)
         completion_rate = (
             (len(completed_tasks) / total_assigned * 100) if total_assigned > 0 else 0
         )
@@ -448,7 +441,6 @@ class TaskService:
             "pending_count": len(pending_tasks),
             "in_progress_count": len(in_progress_tasks),
             "upcoming_count": len(upcoming_tasks),
-            "total_points_earned": total_points_earned,
             "completion_rate": round(completion_rate, 1),
             "current_streak": streak,
             "upcoming_tasks": [
@@ -457,7 +449,6 @@ class TaskService:
                     "title": t.title,
                     "due_date": t.due_date,
                     "priority": t.priority,
-                    "points": t.points,
                 }
                 for t in sorted(upcoming_tasks, key=lambda x: x.due_date)[:5]
             ],
@@ -504,7 +495,6 @@ class TaskService:
             completed = [
                 t for t in member_tasks if t.status == TaskStatus.COMPLETED.value
             ]
-            total_points = sum(t.points for t in completed)
             completion_rate = (
                 (len(completed) / len(member_tasks) * 100) if member_tasks else 0
             )
@@ -513,7 +503,6 @@ class TaskService:
                 {
                     "user_id": member.id,
                     "user_name": member.name,
-                    "total_points": total_points,
                     "tasks_completed": len(completed),
                     "tasks_assigned": len(member_tasks),
                     "completion_rate": round(completion_rate, 1),
@@ -521,10 +510,8 @@ class TaskService:
                 }
             )
 
-        # Sort by points (descending), then by completion rate
-        leaderboard.sort(
-            key=lambda x: (x["total_points"], x["completion_rate"]), reverse=True
-        )
+        # Sort by completion rate
+        leaderboard.sort(key=lambda x: (x["completion_rate"]), reverse=True)
 
         # Add rankings
         for i, entry in enumerate(leaderboard):
@@ -566,7 +553,6 @@ class TaskService:
                     "due_date": task.due_date,
                     "days_overdue": days_overdue,
                     "priority": task.priority,
-                    "points": task.points,
                 }
             )
 
@@ -834,12 +820,6 @@ class TaskService:
 
         return streak
 
-    def _award_points(self, user_id: int, points: int, task_id: int = None):
-        """Award points to user (extensible for future points system)"""
-        # For now, points are tracked through task completion
-        # Future: Could create UserPoints table for detailed tracking
-        pass
-
     def _create_recurring_instances(self, task: Task):
         """Create limited future instances of recurring tasks"""
         if not task.due_date or not task.recurrence_pattern:
@@ -903,7 +883,6 @@ class TaskService:
                 description=task.description,
                 priority=task.priority,
                 estimated_duration=task.estimated_duration,
-                points=task.points,
                 assigned_to=next_assignee.id,
                 created_by=task.created_by,
                 household_id=task.household_id,
@@ -972,7 +951,6 @@ class TaskService:
             .all()
         )
 
-        total_points = sum(task.points for task in completed_tasks)
         tasks_completed = len(completed_tasks)
         tasks_assigned = len(assigned_tasks)
         completion_rate = (
@@ -1002,7 +980,6 @@ class TaskService:
             "household_id": household_id,
             "month": month,
             "year": year,
-            "total_points": total_points,
             "tasks_completed": tasks_completed,
             "tasks_assigned": tasks_assigned,
             "completion_rate": round(completion_rate, 1),

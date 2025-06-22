@@ -128,7 +128,6 @@ async def get_task_details(
             "description": task.description,
             "priority": task.priority,
             "status": task.status,
-            "points": task.points,
             "assigned_to": task.assigned_to,
             "created_by": task.created_by,
             "due_date": task.due_date,
@@ -200,7 +199,7 @@ async def complete_task(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Mark task as completed and award points"""
+    """Mark task as completed"""
     current_user, household_id = user_household
     task_service = TaskService(db)
 
@@ -216,7 +215,6 @@ async def complete_task(
                 "status": task.status,
                 "completed_at": task.completed_at,
             },
-            "points_earned": task.points,
             "completion_time": task.completed_at,
         },
         message="Task completed successfully",
@@ -469,7 +467,6 @@ async def get_household_task_statistics(
     total_completed_tasks = sum(
         entry.get("tasks_completed", 0) for entry in leaderboard
     )
-    total_points = sum(entry.get("total_points", 0) for entry in leaderboard)
     avg_completion_rate = (
         sum(entry.get("completion_rate", 0) for entry in leaderboard) / total_members
         if total_members > 0
@@ -481,7 +478,6 @@ async def get_household_task_statistics(
         "period_months": months_back,
         "total_members": total_members,
         "total_completed_tasks": total_completed_tasks,
-        "total_points_awarded": total_points,
         "average_completion_rate": round(avg_completion_rate, 1),
         "overdue_tasks_count": len(overdue_tasks),
         "leaderboard_preview": leaderboard[:3],  # Top 3

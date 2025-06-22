@@ -492,9 +492,6 @@ class HouseholdService:
                 func.sum(func.case([(Task.status == "completed", 1)], else_=0)).label(
                     "tasks_completed"
                 ),
-                func.sum(
-                    func.case([(Task.status == "completed", Task.points)], else_=0)
-                ).label("points_earned"),
             )
             .filter(and_(Task.assigned_to.in_(user_ids), Task.created_at >= last_month))
             .group_by(Task.assigned_to)
@@ -536,7 +533,6 @@ class HouseholdService:
                         ),
                         1,
                     ),
-                    "points_earned_last_month": int(stat.points_earned or 0),
                 }
             )
 
@@ -560,7 +556,6 @@ class HouseholdService:
             "tasks_assigned_last_month": 0,
             "tasks_completed_last_month": 0,
             "completion_rate": 0.0,
-            "points_earned_last_month": 0,
             "expenses_created_last_month": 0,
             "total_expenses_amount_last_month": 0.0,
         }
@@ -582,7 +577,6 @@ class HouseholdService:
             },
             "task_settings": {
                 "rotation_enabled": True,
-                "point_system_enabled": True,
                 "photo_proof_required": False,
             },
         }
