@@ -305,7 +305,6 @@ class EventService:
                 # Update existing RSVP
                 existing_rsvp.status = rsvp_data.status.value
                 existing_rsvp.guest_count = rsvp_data.guest_count
-                existing_rsvp.dietary_restrictions = rsvp_data.dietary_restrictions
                 existing_rsvp.special_requests = rsvp_data.special_requests
                 existing_rsvp.response_notes = rsvp_data.response_notes
                 existing_rsvp.updated_at = datetime.utcnow()
@@ -320,7 +319,6 @@ class EventService:
                     user_id=user_id,
                     status=rsvp_data.status.value,
                     guest_count=rsvp_data.guest_count,
-                    dietary_restrictions=rsvp_data.dietary_restrictions,
                     special_requests=rsvp_data.special_requests,
                     response_notes=rsvp_data.response_notes,
                 )
@@ -469,7 +467,6 @@ class EventService:
                     "user_name": user_name,
                     "status": rsvp.status,
                     "guest_count": rsvp.guest_count,
-                    "dietary_restrictions": rsvp.dietary_restrictions,
                     "special_requests": rsvp.special_requests,
                     "responded_at": rsvp.created_at,
                 }
@@ -543,7 +540,6 @@ class EventService:
                     "your_rsvp": {
                         "status": rsvp.status,
                         "guest_count": rsvp.guest_count,
-                        "dietary_restrictions": rsvp.dietary_restrictions,
                     },
                 }
             )
@@ -760,7 +756,6 @@ class EventService:
         return {
             "status": rsvp.status,
             "guest_count": rsvp.guest_count,
-            "dietary_restrictions": rsvp.dietary_restrictions,
             "special_requests": rsvp.special_requests,
             "response_notes": rsvp.response_notes,
             "responded_at": rsvp.created_at,

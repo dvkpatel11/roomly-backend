@@ -525,9 +525,6 @@ class MockDataGenerator:
                         user_id=member.user_id,
                         status=random.choice(["yes", "no", "maybe"]),
                         guest_count=random.randint(1, 3),
-                        dietary_restrictions=(
-                            fake.sentence() if random.choice([True, False]) else None
-                        ),
                         response_notes=(
                             fake.sentence() if random.choice([True, False]) else None
                         ),

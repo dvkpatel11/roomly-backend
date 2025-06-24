@@ -331,7 +331,6 @@ class RSVP(Base):
     id = Column(Integer, primary_key=True, index=True)
     status = Column(String, nullable=False)  # yes, no, maybe
     guest_count = Column(Integer, default=1)  # How many people they're bringing
-    dietary_restrictions = Column(Text)
     special_requests = Column(Text)
     response_notes = Column(Text)
 
@@ -395,7 +394,6 @@ class RSVPStatus(str, Enum):
 class RSVPBase(BaseModel):
     status: RSVPStatus
     guest_count: int = Field(1, ge=1, le=10, description="Number of people attending")
-    dietary_restrictions: Optional[str] = Field(None, max_length=300)
     special_requests: Optional[str] = Field(None, max_length=300)
     response_notes: Optional[str] = Field(None, max_length=500)
 
@@ -407,7 +405,6 @@ class RSVPCreate(RSVPBase):
 class RSVPUpdate(BaseModel):
     status: Optional[RSVPStatus] = None
     guest_count: Optional[int] = Field(None, ge=1, le=10)
-    dietary_restrictions: Optional[str] = Field(None, max_length=300)
     special_requests: Optional[str] = Field(None, max_length=300)
     response_notes: Optional[str] = Field(None, max_length=500)
 
