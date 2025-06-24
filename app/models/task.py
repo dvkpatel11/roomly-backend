@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
+from .enums import Priority
 
 
 class Task(Base):
@@ -20,10 +21,10 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text)
-    priority = Column(String, default="normal")  # low, normal, high, urgent
+    priority = Column(String, default=Priority.NORMAL.value)
     estimated_duration = Column(Integer)  # Duration in minutes
     recurring = Column(Boolean, default=False)
-    recurrence_pattern = Column(String)  # daily, weekly, monthly
+    recurrence_pattern = Column(String)
     completion_notes = Column(Text)
     photo_proof_url = Column(String)
     status = Column(String, default=TaskStatus.PENDING.value)

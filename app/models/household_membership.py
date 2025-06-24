@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 from ..database import Base
 from sqlalchemy import Index, UniqueConstraint
 from sqlalchemy.orm import relationship
+from .enums import HouseholdRole
 
 
 class HouseholdMembership(Base):
@@ -11,7 +12,7 @@ class HouseholdMembership(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    role = Column(String, default="member")  # admin, member
+    role = Column(String, default=HouseholdRole.MEMBER.value)  # admin, member
     joined_at = Column(DateTime, server_default=func.now())
     is_active = Column(Boolean, default=True)
 

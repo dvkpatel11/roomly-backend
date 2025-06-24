@@ -21,7 +21,7 @@ class Bill(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
-    category = Column(String, nullable=False)  # utilities, rent, internet, etc.
+    category = Column(String, nullable=False)
     due_day = Column(Integer, nullable=False)  # Day of month (1-31)
     split_method = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
