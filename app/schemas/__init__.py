@@ -41,8 +41,10 @@ from .announcement import (
     AnnouncementUpdate,
     AnnouncementResponse,
     AnnouncementSummary,
-    AnnouncementCategory,
-    AnnouncementPriority,
+)
+from ..models.enums import (
+    AnnouncementType as AnnouncementCategory,
+    Priority,
 )
 from .poll import (
     PollCreate,
@@ -142,7 +144,7 @@ __all__ = [
     "AnnouncementResponse",
     "AnnouncementSummary",
     "AnnouncementCategory",
-    "AnnouncementPriority",
+    "Priority",
     "PollCreate",
     "PollUpdate",
     "PollVoteCreate",

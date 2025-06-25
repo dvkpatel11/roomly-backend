@@ -203,7 +203,9 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 @handle_service_errors
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
     """Get current user information"""
     return current_user
 
@@ -216,7 +218,9 @@ async def logout():
 
 @router.post("/refresh-token", response_model=dict)
 @handle_service_errors
-async def refresh_token(current_user: User = Depends(get_current_user)):
+async def refresh_token(
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
     """Refresh access token"""
     token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -235,7 +239,7 @@ async def refresh_token(current_user: User = Depends(get_current_user)):
 async def change_password(
     current_password: str,
     new_password: str,
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
     db: Session = Depends(get_db),
 ):
     """Change user password"""
@@ -263,7 +267,8 @@ async def change_password(
 @router.get("/profile", response_model=dict)
 @handle_service_errors
 async def get_user_profile(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    user_household: tuple[User, int] = Depends(require_household_member),
+    db: Session = Depends(get_db),
 ):
     """Get comprehensive user profile with household info"""
     household_service = HouseholdService(db)

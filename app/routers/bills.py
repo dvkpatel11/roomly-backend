@@ -149,7 +149,7 @@ async def update_bill(
 async def deactivate_bill(
     bill_id: int,
     db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_admin),  # Admin only
+    user_household: tuple[User, int] = Depends(require_household_admin),
 ):
     """Deactivate a recurring bill (admin only)"""
     current_user, household_id = user_household
@@ -165,44 +165,18 @@ async def deactivate_bill(
     return RouterResponse.success(message="Bill deactivated successfully")
 
 
-@router.post("/{bill_id}/payments", response_model=Dict[str, Any])
+@router.post("/{bill_id}/payments")
 @handle_service_errors
 async def record_bill_payment(
     bill_id: int,
-    payment_data: Dict[str, Any] = Body(
-        ...,
-        example={
-            "amount_paid": 150.00,
-            "payment_method": "venmo",
-            "for_month": "2024-01",
-            "notes": "January rent payment",
-        },
-    ),
+    payment_data: Dict[str, Any],
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Record a bill payment"""
     current_user, household_id = user_household
     billing_service = BillingService(db)
-
-    # Validate required fields
-    amount_paid = payment_data.get("amount_paid")
-    payment_method = payment_data.get("payment_method")
-    for_month = payment_data.get("for_month")
-
-    if not all([amount_paid, payment_method, for_month]):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="amount_paid, payment_method, and for_month are required",
-        )
-
     payment = billing_service.record_bill_payment(
-        bill_id=bill_id,
-        paid_by=current_user.id,
-        amount_paid=amount_paid,
-        payment_method=payment_method,
-        for_month=for_month,
-        notes=payment_data.get("notes", ""),
+        bill_id=bill_id, paid_by=current_user.id, **payment_data
     )
 
     return RouterResponse.created(

@@ -1,14 +1,15 @@
 from pydantic import BaseModel, validator
 from typing import Any, Dict, Optional
 from datetime import datetime
+from ..models.enums import ExpenseCategory, SplitMethod
 
 
 class BillBase(BaseModel):
     name: str
     amount: float
-    category: str
+    category: ExpenseCategory
     due_day: int
-    split_method: str
+    split_method: SplitMethod
     notes: Optional[str] = None
 
 

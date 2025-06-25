@@ -26,8 +26,12 @@ class Poll(Base):
     closes_at = Column(DateTime)
 
     # Foreign Keys
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    household_id = Column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -50,8 +54,12 @@ class PollVote(Base):
     selected_options = Column(JSON, nullable=False)  # List of selected option indices
 
     # Foreign Keys
-    poll_id = Column(Integer, ForeignKey("polls.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    poll_id = Column(
+        Integer, ForeignKey("polls.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

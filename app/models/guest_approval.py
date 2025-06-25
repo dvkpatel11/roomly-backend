@@ -15,8 +15,12 @@ class GuestApproval(Base):
     __tablename__ = "guest_approvals"
 
     id = Column(Integer, primary_key=True)
-    guest_id = Column(Integer, ForeignKey("guests.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    guest_id = Column(
+        Integer, ForeignKey("guests.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     approved = Column(Boolean, nullable=False)
     reason = Column(Text)
     created_at = Column(DateTime, server_default=func.now())

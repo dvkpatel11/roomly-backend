@@ -1,13 +1,14 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from ..models.enums import GuestRelationship
 
 
 class GuestBase(BaseModel):
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None
-    relationship_to_host: str
+    relationship_to_host: GuestRelationship
     check_in: datetime
     check_out: Optional[datetime] = None
     is_overnight: bool = False

@@ -38,6 +38,8 @@ class ExpenseResponse(ExpenseBase):
     created_at: datetime
     updated_at: Optional[datetime]
     split_details: Optional[Dict[str, Any]] = None
+    amount_you_owe: Optional[float] = None
+    amount_owed_to_you: Optional[float] = None
 
     class Config:
         from_attributes = True

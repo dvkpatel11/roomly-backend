@@ -1,10 +1,13 @@
 # House Page - Backend Context
 
 ## Overview
+
 Resource tracking (groceries, supplies), guest management, house rules, and settings.
 
 ## Related Files:
+
 ## app/routers/guests.py
+
 ```python
 from app.services.guest_service import GuestService
 from fastapi import APIRouter, Depends, status, Query, Body
@@ -281,6 +284,7 @@ async def get_relationship_types():
 ```
 
 ## app/routers/shopping.py
+
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
@@ -711,6 +715,7 @@ async def get_shopping_list_templates(
 ```
 
 ## app/routers/households.py
+
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
@@ -742,7 +747,7 @@ router = APIRouter(tags=["households"])
 async def create_household(
     household_data: HouseholdCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Create a new household with current user as admin"""
     household_service = HouseholdService(db)
@@ -775,7 +780,7 @@ async def get_my_household(
 @handle_service_errors
 async def get_household_details(
     household_id: int,
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
     db: Session = Depends(get_db),
 ):
     household_service = HouseholdService(db)
@@ -1007,7 +1012,7 @@ async def join_household_by_invitation(
         ..., example={"invitation_code": "abc123", "household_id": 1}
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Join household using invitation code"""
     household_service = HouseholdService(db)
@@ -1146,6 +1151,7 @@ async def get_household_summary(
 ```
 
 ## app/schemas/guest.py
+
 ```python
 from pydantic import BaseModel
 from typing import Optional
@@ -1171,12 +1177,13 @@ class GuestResponse(GuestBase):
     is_approved: bool
     approved_by: Optional[int]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 ```
 
 ## app/schemas/guest_approval.py
+
 ```python
 from typing import Optional
 from datetime import datetime
@@ -1200,6 +1207,7 @@ class GuestApprovalResponse(BaseModel):
 ```
 
 ## app/schemas/shopping_list.py
+
 ```python
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -1265,7 +1273,7 @@ class ShoppingItemResponse(ShoppingItemBase):
     is_purchased: bool
     purchased_at: Optional[datetime]
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -1284,7 +1292,7 @@ class ShoppingListResponse(ShoppingListBase):
     created_at: datetime
     completed_at: Optional[datetime]
     items: List[ShoppingItemResponse]
-    
+
     class Config:
         from_attributes = True
 
@@ -1300,6 +1308,7 @@ class ShoppingListSummary(BaseModel):
 ```
 
 ## app/schemas/household.py
+
 ```python
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -1391,6 +1400,7 @@ class HouseholdSummary(BaseModel):
 ```
 
 ## app/models/guest.py
+
 ```python
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
@@ -1399,32 +1409,32 @@ from ..database import Base
 
 class Guest(Base):
     __tablename__ = "guests"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     phone = Column(String)
     email = Column(String)
     relationship_to_host = Column(String)  # friend, family, partner, etc.
-    
+
     # Visit details
     check_in = Column(DateTime, nullable=False)
     check_out = Column(DateTime)
     is_overnight = Column(Boolean, default=False)
     is_approved = Column(Boolean, default=False)
-    
+
     # Additional info
     notes = Column(Text)
     special_requests = Column(Text)
-    
+
     # Foreign Keys
     household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
     hosted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships
     household = relationship("Household", back_populates="guests")
     host = relationship("User", back_populates="hosted_guests", foreign_keys=[hosted_by])
@@ -1432,6 +1442,7 @@ class Guest(Base):
 ```
 
 ## app/models/guest_approval.py
+
 ```python
 from sqlalchemy import (
     Column,
@@ -1461,6 +1472,7 @@ class GuestApproval(Base):
 ```
 
 ## app/models/shopping_list.py
+
 ```python
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Float, Text
 from sqlalchemy.orm import relationship
@@ -1469,28 +1481,28 @@ from ..database import Base
 
 class ShoppingList(Base):
     __tablename__ = "shopping_lists"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, default="Grocery List")
     description = Column(Text)
     is_active = Column(Boolean, default=True)
-    
+
     # Shopping trip details
     store_name = Column(String)
     planned_date = Column(DateTime)
     total_estimated_cost = Column(Float)
     total_actual_cost = Column(Float)
-    
+
     # Foreign Keys
     household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     assigned_shopper = Column(Integer, ForeignKey("users.id"), nullable=True)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships
     household = relationship("Household", back_populates="shopping_lists")
     creator = relationship("User", back_populates="created_shopping_lists", foreign_keys=[created_by])
@@ -1500,7 +1512,7 @@ class ShoppingList(Base):
 
 class ShoppingItem(Base):
     __tablename__ = "shopping_items"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     quantity = Column(String, default="1")  # "2 lbs", "1 gallon", "3 items"
@@ -1508,26 +1520,27 @@ class ShoppingItem(Base):
     estimated_cost = Column(Float)
     actual_cost = Column(Float)
     notes = Column(Text)
-    
+
     # Status
     is_purchased = Column(Boolean, default=False)
     is_urgent = Column(Boolean, default=False)
-    
+
     # Foreign Keys
     shopping_list_id = Column(Integer, ForeignKey("shopping_lists.id"), nullable=False)
     requested_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     purchased_at = Column(DateTime)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships
     shopping_list = relationship("ShoppingList", back_populates="items")
     requester = relationship("User", back_populates="requested_shopping_items", foreign_keys=[requested_by])
 ```
 
 ## app/models/household_membership.py
+
 ```python
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
@@ -1555,4 +1568,3 @@ class HouseholdMembership(Base):
         UniqueConstraint("user_id", "household_id", name="uq_user_household"),
     )
 ```
-

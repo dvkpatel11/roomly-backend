@@ -8,6 +8,7 @@ from ..services.household_service import HouseholdService
 from ..schemas.user import UserResponse
 from ..utils.router_helpers import handle_service_errors, RouterResponse
 from supabase import Client
+from ..dependencies.permissions import require_household_member
 import logging
 
 router = APIRouter(tags=["authentication"])
@@ -220,7 +221,11 @@ async def login(
 
 @router.get("/me", response_model=UserResponse)
 @handle_service_errors
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    current_user, household_id = user_household
+
     """Get current user information"""
     return current_user
 
@@ -275,7 +280,7 @@ async def refresh_token(
 @handle_service_errors
 async def change_password(
     password_data: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
     supabase: Client = Depends(get_supabase),
 ):
     """Change user password"""
@@ -303,8 +308,11 @@ async def change_password(
 @router.get("/profile", response_model=dict)
 @handle_service_errors
 async def get_user_profile(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    user_household: tuple[User, int] = Depends(require_household_member),
+    db: Session = Depends(get_db),
 ):
+    current_user, household_id = user_household
+
     """Get comprehensive user profile with household info"""
     household_service = HouseholdService(db)
     household_info = household_service.get_user_household_info(current_user.id)

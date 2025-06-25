@@ -1,10 +1,12 @@
-from app.services.guest_service import GuestService
-from fastapi import APIRouter, Depends, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
+from datetime import datetime
 from ..database import get_db
+from ..services.guest_service import GuestService
 from ..services.approval_service import ApprovalService
-from ..schemas.guest import GuestCreate
+from ..schemas.guest import GuestCreate, GuestResponse
+from ..schemas.guest_approval import GuestApprovalCreate
 from ..dependencies.permissions import require_household_member, require_household_admin
 from ..utils.router_helpers import (
     handle_service_errors,
@@ -12,7 +14,7 @@ from ..utils.router_helpers import (
     validate_pagination,
 )
 from ..models.user import User
-from ..utils.constants import AppConstants, GuestPolicy
+from ..utils.constants import AppConstants
 
 router = APIRouter(tags=["guests"])
 
@@ -49,10 +51,21 @@ async def get_household_guests(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    """Get household guests with filtering and pagination"""
+    current_user, household_id = user_household
+
+    # Validate pagination
+    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
+
     guest_service = GuestService(db)
     guests = guest_service.get_household_guests(
-        user_household[1], upcoming_only, include_pending, limit, offset
+        household_id=household_id,
+        upcoming_only=upcoming_only,
+        include_pending=include_pending,
+        limit=limit,
+        offset=offset,
     )
+
     return RouterResponse.success(data=guests)
 
 
@@ -78,27 +91,6 @@ async def get_pending_guest_approvals(
     )
 
 
-@router.get("/{guest_id}", response_model=Dict[str, Any])
-@handle_service_errors
-async def get_guest_details(
-    guest_id: int,
-    db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_member),
-):
-    """Get detailed guest information"""
-    current_user, household_id = user_household
-
-    # TODO: Add get_guest_details method to ApprovalService
-    # For now, return placeholder
-    guest_details = {
-        "guest_id": guest_id,
-        "household_id": household_id,
-        "message": "Guest details not yet implemented",
-    }
-
-    return RouterResponse.success(data={"guest": guest_details})
-
-
 @router.put("/{guest_id}/approve", response_model=Dict[str, Any])
 @handle_service_errors
 async def approve_guest(
@@ -112,12 +104,12 @@ async def approve_guest(
     approval_service = ApprovalService(db)
 
     result = approval_service.approve_guest(
-        guest_id=guest_id, approver_id=current_user.id
+        guest_id=guest_id,
+        approver_id=current_user.id,
+        reason=approval_data.get("reason") if approval_data else None,
     )
 
-    return RouterResponse.success(
-        data=result, message=result.get("message", "Guest approval processed")
-    )
+    return RouterResponse.success(data=result, message="Guest approved successfully")
 
 
 @router.put("/{guest_id}/deny", response_model=Dict[str, Any])
@@ -135,14 +127,11 @@ async def deny_guest(
     approval_service = ApprovalService(db)
 
     reason = denial_data.get("reason", "")
-
     result = approval_service.deny_guest(
         guest_id=guest_id, denier_id=current_user.id, reason=reason
     )
 
-    return RouterResponse.success(
-        data=result, message=result.get("message", "Guest request denied")
-    )
+    return RouterResponse.success(data=result, message="Guest request denied")
 
 
 @router.delete("/{guest_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -154,119 +143,112 @@ async def cancel_guest_request(
 ):
     """Cancel a guest request (host only)"""
     current_user, household_id = user_household
+    guest_service = GuestService(db)
 
-    # TODO: Add cancel_guest_request method to ApprovalService
-    # This should verify the current user is the host
-    pass
-
-
-@router.get("/policies", response_model=Dict[str, Any])
-@handle_service_errors
-async def get_guest_policies(
-    db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_member),
-):
-    """Get household guest policies"""
-    current_user, household_id = user_household
-
-    # TODO: Get from household settings instead of defaults
-    policies = {
-        "max_overnight_guests": GuestPolicy.DEFAULT_MAX_OVERNIGHT_GUESTS,
-        "max_consecutive_nights": GuestPolicy.DEFAULT_MAX_CONSECUTIVE_NIGHTS,
-        "approval_required": GuestPolicy.DEFAULT_APPROVAL_REQUIRED,
-        "quiet_hours_start": GuestPolicy.DEFAULT_QUIET_HOURS_START,
-        "quiet_hours_end": GuestPolicy.DEFAULT_QUIET_HOURS_END,
-    }
-
-    return RouterResponse.success(data={"guest_policies": policies})
-
-
-@router.put("/policies", response_model=Dict[str, Any])
-@handle_service_errors
-async def update_guest_policies(
-    policies_data: Dict[str, Any] = Body(
-        ...,
-        example={
-            "max_overnight_guests": 3,
-            "max_consecutive_nights": 5,
-            "approval_required": True,
-            "quiet_hours_start": "22:00",
-            "quiet_hours_end": "08:00",
-        },
-    ),
-    db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_admin),  # Admin only
-):
-    """Update household guest policies (admin only)"""
-    current_user, household_id = user_household
-
-    # TODO: Integrate with household service to update settings
-    # For now, return success message
-
-    return RouterResponse.updated(
-        data={"updated_policies": policies_data},
-        message="Guest policies updated successfully",
+    guest_service.cancel_guest_request(
+        guest_id=guest_id, cancelled_by=current_user.id, household_id=household_id
     )
 
 
-@router.get("/calendar", response_model=Dict[str, Any])
+@router.get("/conflicts", response_model=Dict[str, Any])
 @handle_service_errors
-async def get_guest_calendar(
-    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+async def check_guest_conflicts(
+    proposed_checkin: datetime = Query(..., description="Proposed check-in date"),
+    proposed_checkout: Optional[datetime] = Query(
+        None, description="Proposed check-out date"
+    ),
+    guest_count: int = Query(1, ge=1, le=10, description="Number of guests"),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Get guest calendar showing upcoming stays"""
+    """Check for guest conflicts before registration"""
     current_user, household_id = user_household
+    guest_service = GuestService(db)
 
-    # TODO: Add get_guest_calendar method to ApprovalService
-    calendar_data = {
-        "start_date": start_date,
-        "end_date": end_date,
-        "guest_stays": [],
-        "conflicts": [],
-    }
+    conflicts = guest_service.check_guest_conflicts(
+        household_id=household_id,
+        proposed_checkin=proposed_checkin,
+        proposed_checkout=proposed_checkout,
+        guest_count=guest_count,
+    )
 
-    return RouterResponse.success(data={"guest_calendar": calendar_data})
+    return RouterResponse.success(data={"conflicts": conflicts})
 
 
-@router.get("/statistics", response_model=Dict[str, Any])
+@router.get("/me/hosted", response_model=Dict[str, Any])
 @handle_service_errors
-async def get_guest_statistics(
-    months_back: int = Query(6, ge=1, le=24, description="Months of data to analyze"),
+async def get_my_hosted_guests(
+    upcoming_only: bool = Query(True, description="Show only upcoming guests"),
+    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Get guest statistics for household"""
+    """Get guests hosted by current user"""
     current_user, household_id = user_household
+    guest_service = GuestService(db)
 
-    # TODO: Add get_guest_statistics method to ApprovalService
-    statistics = {
-        "household_id": household_id,
-        "period_months": months_back,
-        "total_guest_requests": 0,
-        "approved_guests": 0,
-        "denied_guests": 0,
-        "overnight_stays": 0,
-        "average_stay_duration": 0,
-        "most_active_host": None,
-        "approval_rate": 0,
-    }
+    # Validate pagination
+    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
 
-    return RouterResponse.success(data={"guest_statistics": statistics})
+    my_guests = guest_service.get_user_hosted_guests(
+        user_id=current_user.id,
+        household_id=household_id,
+        upcoming_only=upcoming_only,
+        limit=limit,
+        offset=offset,
+    )
+
+    return RouterResponse.success(data=my_guests)
+
+
+@router.get("/approvals/pending", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_my_pending_approvals(
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    """Get guest requests requiring current user's approval"""
+    current_user, household_id = user_household
+    approval_service = ApprovalService(db)
+
+    pending_approvals = approval_service.get_user_pending_approvals(
+        user_id=current_user.id, household_id=household_id, approval_type="guest"
+    )
+
+    return RouterResponse.success(
+        data={
+            "pending_approvals": pending_approvals,
+            "count": len(pending_approvals),
+        }
+    )
 
 
 @router.get("/config/relationship-types", response_model=Dict[str, Any])
 async def get_relationship_types():
     """Get available guest relationship types"""
+    from ..models.enums import GuestRelationship
+
     relationship_types = [
-        {"value": "friend", "label": "Friend"},
-        {"value": "family", "label": "Family"},
-        {"value": "partner", "label": "Partner"},
-        {"value": "colleague", "label": "Colleague"},
-        {"value": "acquaintance", "label": "Acquaintance"},
-        {"value": "other", "label": "Other"},
+        {"value": rel.value, "label": rel.value.replace("_", " ").title()}
+        for rel in GuestRelationship
     ]
 
     return RouterResponse.success(data={"relationship_types": relationship_types})
+
+
+@router.get("/templates", response_model=Dict[str, Any])
+@handle_service_errors
+async def get_guest_templates(
+    db: Session = Depends(get_db),
+    user_household: tuple[User, int] = Depends(require_household_member),
+):
+    """Get guest registration templates for quick guest creation"""
+    current_user, household_id = user_household
+    guest_service = GuestService(db)
+
+    templates = guest_service.get_guest_templates(
+        household_id=household_id, user_id=current_user.id
+    )
+
+    return RouterResponse.success(data={"templates": templates})

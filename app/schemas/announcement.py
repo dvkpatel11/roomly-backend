@@ -26,7 +26,7 @@ class AnnouncementUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
     content: Optional[str] = Field(None, min_length=1, max_length=2000)
     category: Optional[AnnouncementCategory] = None
-    priority: Optional[AnnouncementPriority] = None
+    priority: Optional[Priority] = None
     is_pinned: Optional[bool] = None
     expires_at: Optional[datetime] = None
 
@@ -47,7 +47,7 @@ class AnnouncementSummary(BaseModel):
     id: int
     title: str
     category: AnnouncementCategory
-    priority: AnnouncementPriority
+    priority: Priority
     is_pinned: bool
     created_at: datetime
     author_name: str

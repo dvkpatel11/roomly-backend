@@ -73,7 +73,7 @@ async def get_events(
     include_pending: bool = True,
     days_ahead: int = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get household events"""
     event_service = EventService(db)
@@ -89,7 +89,7 @@ async def get_events(
 
 @router.get("/events/pending-approval")
 async def get_pending_events(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), user_household: tuple[User, int] = Depends(require_household_member)
 ):
     """Get events pending approval"""
     event_service = EventService(db)
@@ -105,7 +105,7 @@ async def get_pending_events(
 async def approve_event(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Approve an event"""
     approval_service = ApprovalService(db)
@@ -125,7 +125,7 @@ async def deny_event(
     event_id: int,
     reason: str = "",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Deny an event"""
     approval_service = ApprovalService(db)
@@ -145,7 +145,7 @@ async def cancel_event(
     event_id: int,
     reason: str = "",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Cancel an event"""
     event_service = EventService(db)
@@ -166,7 +166,7 @@ async def create_rsvp(
     event_id: int,
     rsvp_data: RSVPCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """RSVP to an event"""
     try:
@@ -184,7 +184,7 @@ async def create_rsvp(
 async def get_event_rsvps(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get all RSVPs for an event"""
     try:
@@ -199,7 +199,7 @@ async def get_event_rsvps(
 async def get_my_upcoming_events(
     days_ahead: int = 30,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get user's upcoming events"""
     event_service = EventService(db)
@@ -217,7 +217,7 @@ async def check_scheduling_conflicts(
     start_date: datetime,
     end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Check for scheduling conflicts"""
     scheduling_service = SchedulingService(db)
@@ -235,7 +235,7 @@ async def suggest_alternative_times(
     duration_hours: int = 2,
     days_to_check: int = 7,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get alternative time suggestions"""
     scheduling_service = SchedulingService(db)
@@ -255,7 +255,7 @@ async def get_schedule_overview(
     start_date: Optional[datetime] = None,
     days: int = 7,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get household schedule overview"""
     scheduling_service = SchedulingService(db)
@@ -274,7 +274,7 @@ async def get_schedule_overview(
 async def get_event_statistics(
     months_back: int = 6,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get event statistics"""
     event_service = EventService(db)

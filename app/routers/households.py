@@ -28,7 +28,7 @@ router = APIRouter(tags=["households"])
 async def create_household(
     household_data: HouseholdCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Create a new household with current user as admin"""
     household_service = HouseholdService(db)
@@ -61,7 +61,7 @@ async def get_my_household(
 @handle_service_errors
 async def get_household_details(
     household_id: int,
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
     db: Session = Depends(get_db),
 ):
     household_service = HouseholdService(db)
@@ -130,26 +130,10 @@ async def add_member_to_my_household(
     current_user, household_id = user_household
     household_service = HouseholdService(db)
 
-    user_id = member_data.get("user_id")
-    role = member_data.get("role", "member")
-
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required"
-        )
-
-    # Validate role
-    if role not in [r.value for r in HouseholdRole]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role. Must be one of: {[r.value for r in HouseholdRole]}",
-        )
-
     result = household_service.add_member_to_household(
         household_id=household_id,
-        user_id=user_id,
-        role=role,
         added_by=current_user.id,
+        **member_data,
     )
 
     if not result:
@@ -158,7 +142,7 @@ async def add_member_to_my_household(
         )
 
     return RouterResponse.success(
-        message=f"Member added successfully with role: {role}"
+        message=f"Member added successfully with role: {member_data.get('role', 'member')}"
     )
 
 
@@ -293,7 +277,7 @@ async def join_household_by_invitation(
         ..., example={"invitation_code": "abc123", "household_id": 1}
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Join household using invitation code"""
     household_service = HouseholdService(db)

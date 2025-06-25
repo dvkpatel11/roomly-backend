@@ -1,10 +1,13 @@
 # Shared Context - Backend Context
 
 ## Overview
+
 Common models, enums, authentication, and utilities used across all pages.
 
 ## Related Files:
+
 ## app/routers/auth.py
+
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -211,7 +214,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 @handle_service_errors
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(user_household: tuple[User, int] = Depends(require_household_member)):
     """Get current user information"""
     return current_user
 
@@ -224,7 +227,7 @@ async def logout():
 
 @router.post("/refresh-token", response_model=dict)
 @handle_service_errors
-async def refresh_token(current_user: User = Depends(get_current_user)):
+async def refresh_token(user_household: tuple[User, int] = Depends(require_household_member)):
     """Refresh access token"""
     token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -243,7 +246,7 @@ async def refresh_token(current_user: User = Depends(get_current_user)):
 async def change_password(
     current_password: str,
     new_password: str,
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
     db: Session = Depends(get_db),
 ):
     """Change user password"""
@@ -271,7 +274,7 @@ async def change_password(
 @router.get("/profile", response_model=dict)
 @handle_service_errors
 async def get_user_profile(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    user_household: tuple[User, int] = Depends(require_household_member), db: Session = Depends(get_db)
 ):
     """Get comprehensive user profile with household info"""
     household_service = HouseholdService(db)
@@ -293,6 +296,7 @@ async def get_user_profile(
 ```
 
 ## app/models/enums.py
+
 ```python
 from enum import Enum
 
@@ -318,6 +322,7 @@ class TaskStatus(str, Enum):
 ```
 
 ## app/models/rsvp.py
+
 ```python
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
@@ -348,6 +353,7 @@ class RSVP(Base):
 ```
 
 ## app/models/event_approval.py
+
 ```python
 from sqlalchemy import (
     Column,
@@ -378,6 +384,7 @@ class EventApproval(Base):
 ```
 
 ## app/schemas/rsvp.py
+
 ```python
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -440,6 +447,7 @@ class UserRSVPSummary(BaseModel):
 ```
 
 ## app/schemas/event_approval.py
+
 ```python
 from typing import Optional
 from datetime import datetime
@@ -461,4 +469,3 @@ class EventApprovalResponse(BaseModel):
     reason: Optional[str]
     created_at: datetime
 ```
-

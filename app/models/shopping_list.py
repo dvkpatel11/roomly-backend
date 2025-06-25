@@ -29,10 +29,15 @@ class ShoppingList(Base):
     total_actual_cost = Column(Float)
 
     # Foreign Keys
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-    assigned_shopper = Column(Integer, ForeignKey("users.id"), nullable=True)
-
+    household_id = Column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    assigned_shopper = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime)
@@ -69,9 +74,12 @@ class ShoppingItem(Base):
     is_urgent = Column(Boolean, default=False)
 
     # Foreign Keys
-    shopping_list_id = Column(Integer, ForeignKey("shopping_lists.id"), nullable=False)
-    requested_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-
+    shopping_list_id = Column(
+        Integer, ForeignKey("shopping_lists.id", ondelete="CASCADE"), nullable=False
+    )
+    requested_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     purchased_at = Column(DateTime)

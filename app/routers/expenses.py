@@ -136,37 +136,16 @@ async def delete_expense(
     expense_service.delete_expense(expense_id=expense_id, deleted_by=current_user.id)
 
 
-@router.post("/{expense_id}/payments", response_model=Dict[str, Any])
+@router.post("/{expense_id}/payments")
 @handle_service_errors
 async def record_expense_payment(
     expense_id: int,
-    payment_data: Dict[str, Any] = Body(
-        ...,
-        example={
-            "amount_paid": 50.00,
-            "payment_method": "venmo",
-            "notes": "My share of groceries",
-        },
-    ),
+    payment_data: Dict[str, Any],
     db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    """Record a payment towards an expense"""
-    current_user, household_id = user_household
     expense_service = ExpenseService(db)
-
-    amount_paid = payment_data.get("amount_paid")
-    if not amount_paid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="amount_paid is required"
-        )
-
     payment = expense_service.record_expense_payment(
-        expense_id=expense_id,
-        paid_by=current_user.id,
-        amount_paid=amount_paid,
-        payment_method=payment_data.get("payment_method"),
-        notes=payment_data.get("notes"),
+        expense_id=expense_id, **payment_data
     )
 
     return RouterResponse.created(

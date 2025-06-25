@@ -35,7 +35,7 @@ class Task(Base):
     assigned_to = Column(
         Integer,
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,  # Allow tasks to exist without assigned user
+        nullable=True,
     )
     created_by = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -57,6 +57,6 @@ class Task(Base):
     )
 
     __table_args__ = (
-        Index("idx_task_status_due", "status", "due_date"),
-        Index("idx_task_household_assigned", "household_id", "assigned_to"),
+        Index("idx_task_household_status_due", "household_id", "status", "due_date"),
+        Index("idx_task_assigned_status", "assigned_to", "status"),
     )

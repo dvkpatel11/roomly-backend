@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy import (
+    Index,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    Boolean,
+    Text,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -160,3 +169,8 @@ class NotificationPreference(Base):
         db_session.add(preferences)
         db_session.commit()
         return preferences
+
+    __table_args__ = (
+        Index("idx_notification_user_unread", "user_id", "is_read", "created_at"),
+        Index("idx_notification_household_priority", "household_id", "priority"),
+    )

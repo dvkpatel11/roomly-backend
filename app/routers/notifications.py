@@ -50,11 +50,12 @@ async def get_user_notifications(
     limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get user's notifications with filtering and pagination"""
     # Validate pagination
     limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
+    current_user, household_id = user_household
 
     # Build query
     query = db.query(Notification).filter(Notification.user_id == current_user.id)
@@ -111,8 +112,10 @@ async def get_user_notifications(
 async def get_notification_details(
     notification_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Get detailed notification information"""
     notification = (
         db.query(Notification)
@@ -155,8 +158,10 @@ async def get_notification_details(
 async def mark_notification_read(
     notification_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Mark notification as read"""
     notification = (
         db.query(Notification)
@@ -189,8 +194,10 @@ async def mark_all_notifications_read(
         None, description="Optional filter by notification types"
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Mark all (or filtered) notifications as read"""
     query = db.query(Notification).filter(
         and_(Notification.user_id == current_user.id, Notification.is_read == False)
@@ -214,8 +221,10 @@ async def mark_all_notifications_read(
 async def delete_notification(
     notification_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Delete a notification"""
     notification = (
         db.query(Notification)
@@ -241,8 +250,10 @@ async def delete_notification(
 @handle_service_errors
 async def get_notification_preferences(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Get user's notification preferences"""
     notification_service = NotificationService(db)
     preferences = notification_service.get_user_preferences(current_user.id)
@@ -265,8 +276,10 @@ async def update_notification_preferences(
         },
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Update user's notification preferences"""
     notification_service = NotificationService(db)
     success = notification_service.update_user_preferences(
@@ -290,12 +303,14 @@ async def update_notification_preferences(
 async def get_unread_count(
     by_type: bool = Query(False, description="Group count by notification type"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Get count of unread notifications"""
     if by_type:
         # Get counts grouped by type
         from sqlalchemy import func
+
+        current_user, household_id = user_household
 
         type_counts = (
             db.query(
@@ -338,8 +353,10 @@ async def get_unread_count(
 @handle_service_errors
 async def get_notification_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    current_user, household_id = user_household
+
     """Get notification summary with counts and recent notifications"""
     notification_service = NotificationService(db)
     summary = notification_service.get_notification_summary(current_user.id)
@@ -349,7 +366,6 @@ async def get_notification_summary(
 
 # SYSTEM ENDPOINTS FOR BACKGROUND TASKS
 @router.post("/system/trigger/bill-reminders", response_model=Dict[str, Any])
-@handle_service_errors
 async def trigger_bill_reminders_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -361,7 +377,6 @@ async def trigger_bill_reminders_endpoint(
 
 
 @router.post("/system/trigger/task-reminders", response_model=Dict[str, Any])
-@handle_service_errors
 async def trigger_task_reminders_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -373,7 +388,6 @@ async def trigger_task_reminders_endpoint(
 
 
 @router.post("/system/trigger/event-reminders", response_model=Dict[str, Any])
-@handle_service_errors
 async def trigger_event_reminders_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -385,7 +399,6 @@ async def trigger_event_reminders_endpoint(
 
 
 @router.post("/system/trigger/all-reminders", response_model=Dict[str, Any])
-@handle_service_errors
 async def trigger_all_reminders_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),

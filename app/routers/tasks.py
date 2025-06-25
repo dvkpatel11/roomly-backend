@@ -233,16 +233,10 @@ async def update_task_status(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
-    # Validate status
-    new_status = status_data.get("status")
-    if new_status not in [s.value for s in TaskStatus]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status. Must be one of: {[s.value for s in TaskStatus]}",
-        )
-
     task = task_service.update_task_status(
-        task_id=task_id, new_status=new_status, user_id=current_user.id
+        task_id=task_id,
+        user_id=current_user.id,
+        **status_data,
     )
 
     return RouterResponse.updated(data={"task": task})

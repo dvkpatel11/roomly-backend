@@ -17,8 +17,12 @@ class Announcement(Base):
     expires_at = Column(DateTime)
 
     # Foreign Keys
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    household_id = Column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
