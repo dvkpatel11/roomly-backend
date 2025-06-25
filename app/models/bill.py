@@ -22,15 +22,18 @@ class Bill(Base):
     name = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     category = Column(String, nullable=False)
-    due_day = Column(Integer, nullable=False)  # Day of month (1-31)
+    due_day = Column(Integer, nullable=False)
     split_method = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     notes = Column(Text)
     split_details = Column(JSON)
 
-    # Foreign Keys
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    household_id = Column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -41,7 +44,9 @@ class Bill(Base):
     created_by_user = relationship(
         "User", back_populates="created_bills", foreign_keys=[created_by]
     )
-    payments = relationship("BillPayment", back_populates="bill")
+    payments = relationship(
+        "BillPayment", back_populates="bill", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_bill_household_active", "household_id", "is_active"),
@@ -55,13 +60,16 @@ class BillPayment(Base):
     id = Column(Integer, primary_key=True, index=True)
     amount_paid = Column(Float, nullable=False)
     payment_date = Column(DateTime, nullable=False)
-    payment_method = Column(String)  # venmo, cash, check, etc.
+    payment_method = Column(String)
     notes = Column(Text)
-    for_month = Column(String, nullable=False)  # "2025-06" format
+    for_month = Column(String, nullable=False)
 
-    # Foreign Keys
-    bill_id = Column(Integer, ForeignKey("bills.id"), nullable=False)
-    paid_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    bill_id = Column(
+        Integer, ForeignKey("bills.id", ondelete="CASCADE"), nullable=False
+    )
+    paid_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

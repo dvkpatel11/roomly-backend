@@ -22,16 +22,24 @@ class Task(Base):
     title = Column(String, nullable=False)
     description = Column(Text)
     priority = Column(String, default=Priority.NORMAL.value)
-    estimated_duration = Column(Integer)  # Duration in minutes
+    estimated_duration = Column(Integer)
     recurring = Column(Boolean, default=False)
     recurrence_pattern = Column(String)
     completion_notes = Column(Text)
     photo_proof_url = Column(String)
     status = Column(String, default=TaskStatus.PENDING.value)
-    # Foreign Keys
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    household_id = Column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    assigned_to = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,  # Allow tasks to exist without assigned user
+    )
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Timestamps
     due_date = Column(DateTime)

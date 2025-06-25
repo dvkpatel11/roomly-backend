@@ -11,22 +11,23 @@ class Guest(Base):
     name = Column(String, nullable=False)
     phone = Column(String)
     email = Column(String)
-    relationship_to_host = Column(String)  # friend, family, partner, etc.
-
-    # Visit details
+    relationship_to_host = Column(String)
     check_in = Column(DateTime, nullable=False)
     check_out = Column(DateTime)
     is_overnight = Column(Boolean, default=False)
     is_approved = Column(Boolean, default=False)
-
-    # Additional info
     notes = Column(Text)
     special_requests = Column(Text)
 
-    # Foreign Keys
-    household_id = Column(Integer, ForeignKey("households.id"), nullable=False)
-    hosted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    household_id = Column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False
+    )
+    hosted_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
