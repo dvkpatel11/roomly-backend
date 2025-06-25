@@ -17,6 +17,7 @@ from ..utils.router_helpers import (
 )
 from ..models.user import User
 from ..utils.constants import AppConstants
+from ..utils.service_helpers import ServiceHelpers, calculate_splits
 
 router = APIRouter(tags=["expenses"])
 
@@ -249,7 +250,6 @@ async def preview_expense_split(
 ):
     """Preview how an expense would be split without creating it"""
     current_user, household_id = user_household
-    expense_service = ExpenseService(db)
 
     amount = preview_data.get("amount")
     split_method_str = preview_data.get("split_method")
@@ -271,10 +271,10 @@ async def preview_expense_split(
         )
 
     # Get household members for preview
-    household_members = expense_service._get_household_members(household_id)
+    household_members = ServiceHelpers.get_household_members(household_id)
 
     # Calculate splits
-    split_details = expense_service._calculate_splits(
+    split_details = calculate_splits(
         total_amount=amount,
         split_method=split_method,
         household_members=household_members,

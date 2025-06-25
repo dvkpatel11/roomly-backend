@@ -13,20 +13,12 @@ from datetime import datetime
 from ..database import get_db
 from ..services.notification_service import NotificationService
 from ..models.notification import Notification
-from ..schemas.notification import (
-    NotificationResponse,
-    NotificationPreferences,
-    NotificationPreferencesUpdate,
-    NotificationSummary,
-)
 from ..dependencies.permissions import require_household_member
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
-    validate_pagination,
 )
 from ..models.user import User
-from ..utils.constants import AppConstants
 from ..utils.background_tasks import (
     trigger_bill_reminders,
     trigger_task_reminders,
@@ -34,123 +26,53 @@ from ..utils.background_tasks import (
     scheduler,
 )
 from sqlalchemy import and_
-from .auth import get_current_user
+from ..schemas.common import PaginationParams
+from ..schemas.notification import (
+    NotificationListResponse,
+    NotificationFilters,
+    NotificationResponse,
+    NotificationPreferences,
+    NotificationPreferencesUpdate,
+    NotificationSummary,
+)
 
 router = APIRouter(tags=["notifications"])
 
 
-@router.get("/", response_model=Dict[str, Any])
-@handle_service_errors
+@router.get("/", response_model=NotificationListResponse)
 async def get_user_notifications(
-    unread_only: bool = Query(False, description="Show only unread notifications"),
-    priority: Optional[str] = Query(None, description="Filter by priority level"),
-    notification_type: Optional[str] = Query(
-        None, description="Filter by notification type"
-    ),
-    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    filters: NotificationFilters = Depends(),
+    pagination: PaginationParams = Depends(),
     user_household: tuple[User, int] = Depends(require_household_member),
+    db: Session = Depends(get_db),
 ):
     """Get user's notifications with filtering and pagination"""
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-    current_user, household_id = user_household
+    current_user, _ = user_household
+    notification_service = NotificationService(db)
 
-    # Build query
-    query = db.query(Notification).filter(Notification.user_id == current_user.id)
-
-    if unread_only:
-        query = query.filter(Notification.is_read == False)
-
-    if priority:
-        query = query.filter(Notification.priority == priority)
-
-    if notification_type:
-        query = query.filter(Notification.notification_type == notification_type)
-
-    # Get total count
-    total_count = query.count()
-
-    # Get notifications with pagination
-    notifications = (
-        query.order_by(Notification.created_at.desc()).offset(offset).limit(limit).all()
+    result = notification_service.get_user_notifications(
+        user_id=current_user.id, filters=filters, pagination=pagination
     )
 
-    notification_list = []
-    for notification in notifications:
-        notification_list.append(
-            {
-                "id": notification.id,
-                "title": notification.title,
-                "message": notification.message,
-                "notification_type": notification.notification_type,
-                "priority": notification.priority,
-                "is_read": notification.is_read,
-                "related_entity_type": notification.related_entity_type,
-                "related_entity_id": notification.related_entity_id,
-                "action_url": notification.action_url,
-                "created_at": notification.created_at,
-                "read_at": notification.read_at,
-            }
-        )
-
-    return RouterResponse.success(
-        data={
-            "notifications": notification_list,
-            "total_count": total_count,
-            "unread_count": len([n for n in notification_list if not n["is_read"]]),
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + limit < total_count,
-        }
-    )
+    return RouterResponse.success(data=result)
 
 
-@router.get("/{notification_id}", response_model=Dict[str, Any])
+@router.get("/{notification_id}", response_model=NotificationResponse)
 @handle_service_errors
 async def get_notification_details(
     notification_id: int,
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    current_user, household_id = user_household
+    """Get notification details with proper typing"""
+    current_user, _ = user_household
+    notification_service = NotificationService(db)
 
-    """Get detailed notification information"""
-    notification = (
-        db.query(Notification)
-        .filter(
-            and_(
-                Notification.id == notification_id,
-                Notification.user_id == current_user.id,
-            )
-        )
-        .first()
+    notification = notification_service.get_notification_by_id(
+        notification_id=notification_id, user_id=current_user.id
     )
 
-    if not notification:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found"
-        )
-
-    notification_detail = {
-        "id": notification.id,
-        "title": notification.title,
-        "message": notification.message,
-        "notification_type": notification.notification_type,
-        "priority": notification.priority,
-        "is_read": notification.is_read,
-        "related_entity_type": notification.related_entity_type,
-        "related_entity_id": notification.related_entity_id,
-        "action_url": notification.action_url,
-        "sent_in_app": notification.sent_in_app,
-        "sent_email": notification.sent_email,
-        "sent_push": notification.sent_push,
-        "created_at": notification.created_at,
-        "read_at": notification.read_at,
-    }
-
-    return RouterResponse.success(data={"notification": notification_detail})
+    return notification
 
 
 @router.put("/{notification_id}/read", response_model=Dict[str, Any])
@@ -246,56 +168,36 @@ async def delete_notification(
     db.commit()
 
 
-@router.get("/preferences", response_model=Dict[str, Any])
+@router.get("/preferences", response_model=NotificationPreferences)
 @handle_service_errors
 async def get_notification_preferences(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    current_user, household_id = user_household
-
-    """Get user's notification preferences"""
+    """Get notification preferences with proper typing"""
+    current_user, _ = user_household
     notification_service = NotificationService(db)
+
     preferences = notification_service.get_user_preferences(current_user.id)
+    return preferences
 
-    return RouterResponse.success(data={"preferences": preferences})
 
-
-@router.put("/preferences", response_model=Dict[str, Any])
+@router.put("/preferences", response_model=NotificationPreferences)
 @handle_service_errors
 async def update_notification_preferences(
-    preferences_data: Dict[str, bool] = Body(
-        ...,
-        example={
-            "bill_reminders_email": True,
-            "bill_reminders_push": True,
-            "task_reminders_email": False,
-            "task_reminders_push": True,
-            "event_reminders_email": True,
-            "event_reminders_push": True,
-        },
-    ),
+    preferences_update: NotificationPreferencesUpdate,  # ← Now using proper schema
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    current_user, household_id = user_household
-
-    """Update user's notification preferences"""
+    """Update notification preferences with validation"""
+    current_user, _ = user_household
     notification_service = NotificationService(db)
-    success = notification_service.update_user_preferences(
-        user_id=current_user.id, preferences=preferences_data
+
+    updated_preferences = notification_service.update_user_preferences(
+        user_id=current_user.id, preferences_update=preferences_update
     )
 
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to update preferences",
-        )
-
-    return RouterResponse.updated(
-        data={"updated_preferences": preferences_data},
-        message="Notification preferences updated successfully",
-    )
+    return updated_preferences
 
 
 @router.get("/unread-count", response_model=Dict[str, Any])
@@ -349,19 +251,18 @@ async def get_unread_count(
         return RouterResponse.success(data={"unread_count": count})
 
 
-@router.get("/summary", response_model=Dict[str, Any])
+@router.get("/summary", response_model=NotificationSummary)
 @handle_service_errors
 async def get_notification_summary(
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
-    current_user, household_id = user_household
-
-    """Get notification summary with counts and recent notifications"""
+    """Get notification summary with proper typing"""
+    current_user, _ = user_household
     notification_service = NotificationService(db)
-    summary = notification_service.get_notification_summary(current_user.id)
 
-    return RouterResponse.success(data={"notification_summary": summary})
+    summary = notification_service.get_notification_summary(current_user.id)
+    return summary
 
 
 # SYSTEM ENDPOINTS FOR BACKGROUND TASKS

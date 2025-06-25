@@ -8,8 +8,9 @@ from ..models.user import User
 from ..models.expense import Expense
 from ..schemas.bill import BillCreate, BillUpdate
 from ..utils.date_helpers import DateHelpers
-from .expense_service import ExpenseService
+from ..utils.service_helpers import calculate_splits
 from dataclasses import dataclass
+from ..utils.service_helpers import ServiceHelpers
 
 
 @dataclass
@@ -25,7 +26,6 @@ class HouseholdMember:
 class BillingService:
     def __init__(self, db: Session):
         self.db = db
-        self.expense_service = ExpenseService(db)
 
     def create_recurring_bill(
         self, bill_data: BillCreate, household_id: int, created_by: int
@@ -92,8 +92,10 @@ class BillingService:
                 self.db.flush()  # Get expense ID
 
                 # Calculate splits for the expense
-                household_members = self._get_household_members(bill.household_id)
-                split_details = self.expense_service._calculate_splits(
+                household_members = ServiceHelpers.get_household_members(
+                    bill.household_id
+                )
+                split_details = calculate_splits(
                     bill.amount,
                     bill.split_method,
                     household_members,
@@ -293,32 +295,6 @@ class BillingService:
             ],
         }
 
-    def _get_household_members(self, household_id: int) -> List[HouseholdMember]:
-        """Get all active members using HouseholdMembership"""
-
-        members_query = (
-            self.db.query(User, HouseholdMembership)
-            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    User.is_active == True,
-                )
-            )
-            .all()
-        )
-
-        return [
-            HouseholdMember(
-                id=user.id,
-                name=user.name,
-                email=user.email,
-                role=membership.role,
-            )
-            for user, membership in members_query
-        ]
-
     def get_bill_payment_history(
         self, bill_id: int, months_back: int = 12
     ) -> List[Dict[str, Any]]:
@@ -501,7 +477,7 @@ class BillingService:
                 )
 
         # Calculate household members for split preview
-        household_members = self._get_household_members(bill.household_id)
+        household_members = ServiceHelpers.get_household_members(bill.household_id)
         split_preview = []
 
         if bill.split_method and household_members:

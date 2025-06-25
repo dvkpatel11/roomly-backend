@@ -108,8 +108,6 @@ async def get_task_details(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
-    # TODO: Add get_task_by_id method to TaskService for efficiency
-    # For now, use existing method but this should be optimized
     try:
         # Get specific task using the internal method (needs to be added to service)
         task = task_service._get_task_or_raise(task_id)

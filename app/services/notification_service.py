@@ -12,6 +12,7 @@ from ..utils.email import EmailService
 from ..utils.date_helpers import DateHelpers
 from ..utils.constants import NotificationType
 from dataclasses import dataclass
+from ..utils.service_helpers import ServiceHelpers
 
 
 @dataclass
@@ -175,7 +176,7 @@ class NotificationService:
         bills = self.db.query(Bill).filter(Bill.is_active == True).all()
 
         for bill in bills:
-            household_members = self._get_household_members(bill.household_id)
+            household_members = ServiceHelpers.get_household_members(bill.household_id)
 
             # Calculate current and next month due dates
             current_month_due = self._get_current_month_due_date(bill, now)
@@ -350,7 +351,7 @@ class NotificationService:
         )
 
         for event in upcoming_events:
-            household_members = self._get_household_members(event.household_id)
+            household_members = ServiceHelpers.get_household_members(event.household_id)
 
             # 24 hours before reminder
             twenty_four_hours_before = event.start_date - timedelta(hours=24)
@@ -431,32 +432,6 @@ class NotificationService:
         )
 
         return recent_notification is not None
-
-    def _get_household_members(self, household_id: int) -> List[HouseholdMember]:
-        """Get all active members using HouseholdMembership"""
-
-        members_query = (
-            self.db.query(User, HouseholdMembership)
-            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    User.is_active == True,
-                )
-            )
-            .all()
-        )
-
-        return [
-            HouseholdMember(
-                id=user.id,
-                name=user.name,
-                email=user.email,
-                role=membership.role,
-            )
-            for user, membership in members_query
-        ]
 
     def _get_current_month_due_date(
         self, bill: Bill, now: datetime

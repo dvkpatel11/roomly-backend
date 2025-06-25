@@ -35,6 +35,17 @@ class NotificationResponse(NotificationBase):
         from_attributes = True
 
 
+class NotificationListResponse(BaseModel):
+    """Response model for notification list endpoint"""
+
+    notifications: List[NotificationResponse]
+    total_count: int
+    unread_count: int
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class NotificationPreferences(BaseModel):
     """FIXED: Aligned with model structure"""
 
@@ -137,3 +148,13 @@ class NotificationSummary(BaseModel):
     unread_count: int
     high_priority_count: int
     recent_notifications: List[NotificationResponse]
+
+
+class NotificationFilters(BaseModel):
+    """Filter parameters for notification queries"""
+
+    unread_only: bool = Field(False, description="Show only unread notifications")
+    priority: Optional[str] = Field(None, description="Filter by priority level")
+    notification_type: Optional[str] = Field(
+        None, description="Filter by notification type"
+    )

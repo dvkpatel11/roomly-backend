@@ -8,6 +8,8 @@ from ..models.user import User
 from ..models.household_membership import HouseholdMembership
 from ..schemas.expense import ExpenseCreate, ExpenseUpdate, SplitMethod
 from dataclasses import dataclass
+from ..utils.service_helpers import calculate_splits
+from ..utils.service_helpers import ServiceHelpers
 
 
 # Custom Exceptions
@@ -71,7 +73,7 @@ class ExpenseService:
             raise PermissionDeniedError("User is not a member of this household")
 
         # Get household members for split calculation
-        household_members = self._get_household_members(household_id)
+        household_members = ServiceHelpers.get_household_members(household_id)
         if not household_members:
             raise BusinessRuleViolationError("Household has no active members")
 
@@ -98,7 +100,7 @@ class ExpenseService:
             )
 
             # Calculate splits
-            split_details = self._calculate_splits(
+            split_details = calculate_splits(
                 expense_data.amount,
                 expense_data.split_method,
                 household_members,
@@ -220,14 +222,16 @@ class ExpenseService:
 
             # Recalculate splits if amount or split method changed
             if "amount" in update_data or "split_method" in update_data:
-                household_members = self._get_household_members(expense.household_id)
+                household_members = ServiceHelpers.get_household_members(
+                    expense.household_id
+                )
 
                 split_method = expense_updates.split_method or SplitMethod(
                     expense.split_method
                 )
                 amount = expense_updates.amount or expense.amount
 
-                expense.split_details = self._calculate_splits(
+                expense.split_details = calculate_splits(
                     amount, split_method, household_members, custom_splits or {}
                 )
 
@@ -262,233 +266,11 @@ class ExpenseService:
             self.db.rollback()
             raise ExpenseServiceError(f"Failed to delete expense: {str(e)}")
 
-    def _calculate_splits(
-        self,
-        total_amount: float,
-        split_method: SplitMethod,
-        household_members: List[HouseholdMember],
-        custom_splits: Dict[int, Union[float, str]],
-    ) -> Dict[str, Any]:
-        """Calculate how expense should be split among members"""
-
-        if not household_members:
-            raise BusinessRuleViolationError(
-                "No household members to split expense among"
-            )
-
-        splits = []
-
-        if split_method == SplitMethod.EQUAL:
-            splits = self._calculate_equal_splits(total_amount, household_members)
-
-        elif split_method == SplitMethod.SPECIFIC:
-            splits = self._calculate_custom_splits(
-                total_amount, household_members, custom_splits
-            )
-
-        elif split_method == SplitMethod.BY_USAGE:
-            splits = self._calculate_custom_splits(
-                total_amount, household_members, custom_splits
-            )
-
-        elif split_method == SplitMethod.PERCENTAGE:
-            splits = self._calculate_percentage_splits(
-                total_amount, household_members, custom_splits
-            )
-
-        # Ensure total adds up exactly (handle rounding differences)
-        splits = self._adjust_for_rounding(splits, total_amount)
-
-        return {
-            "splits": splits,
-            "total_amount": total_amount,
-            "split_method": split_method.value,
-            "calculated_at": datetime.utcnow().isoformat(),
-            "all_paid": False,
-        }
-
-    def _calculate_custom_splits(
-        self,
-        total_amount: float,
-        household_members: List[HouseholdMember],
-        custom_splits: Dict[int, Union[float, str]],
-    ) -> List[Dict[str, Any]]:
-        """Handle custom fixed amounts"""
-
-        splits = []
-        remaining_amount = total_amount
-        specified_members = set()
-
-        # First, handle members with specified amounts
-        for member in household_members:
-            if member.id in custom_splits:
-                amount = float(custom_splits[member.id])
-                if amount < 0:
-                    raise BusinessRuleViolationError(
-                        f"Negative amount not allowed for {member.name}"
-                    )
-
-                amount = self._round_currency(amount)
-                specified_members.add(member.id)
-
-                splits.append(
-                    {
-                        "user_id": member.id,
-                        "user_name": member.name,
-                        "amount_owed": amount,
-                        "calculation_method": "custom_amount",
-                        "is_paid": False,
-                    }
-                )
-
-                remaining_amount -= amount
-
-        # Split remaining amount equally among unspecified members
-        unspecified_members = [
-            m for m in household_members if m.id not in specified_members
-        ]
-
-        if unspecified_members and remaining_amount > 0:
-            per_person = self._round_currency(
-                remaining_amount / len(unspecified_members)
-            )
-
-            for member in unspecified_members:
-                splits.append(
-                    {
-                        "user_id": member.id,
-                        "user_name": member.name,
-                        "amount_owed": per_person,
-                        "calculation_method": "equal_remaining",
-                        "is_paid": False,
-                    }
-                )
-        elif remaining_amount < -0.01:  # Negative remaining (over-specified)
-            raise BusinessRuleViolationError(
-                "Custom amounts exceed total expense amount"
-            )
-
-        return splits
-
-    def _calculate_percentage_splits(
-        self,
-        total_amount: float,
-        household_members: List[HouseholdMember],
-        custom_splits: Dict[int, Union[float, str]],
-    ) -> List[Dict[str, Any]]:
-        """Handle percentage-based splits"""
-
-        splits = []
-        total_percentage = 0
-        specified_members = set()
-
-        # Calculate amounts for specified percentages
-        for member in household_members:
-            if member.id in custom_splits:
-                percentage = float(custom_splits[member.id])
-                if percentage < 0 or percentage > 100:
-                    raise BusinessRuleViolationError(
-                        f"Percentage must be between 0-100% for {member.name}"
-                    )
-
-                amount = self._round_currency(total_amount * (percentage / 100))
-                total_percentage += percentage
-                specified_members.add(member.id)
-
-                splits.append(
-                    {
-                        "user_id": member.id,
-                        "user_name": member.name,
-                        "amount_owed": amount,
-                        "calculation_method": f"{percentage}%",
-                        "is_paid": False,
-                    }
-                )
-
-        if total_percentage > 100:
-            raise BusinessRuleViolationError("Total percentages cannot exceed 100%")
-
-        # Handle remaining percentage equally if not 100%
-        if total_percentage < 100:
-            remaining_percentage = 100 - total_percentage
-            unspecified_members = [
-                m for m in household_members if m.id not in specified_members
-            ]
-
-            if unspecified_members:
-                per_person_percentage = remaining_percentage / len(unspecified_members)
-
-                for member in unspecified_members:
-                    amount = self._round_currency(
-                        total_amount * (per_person_percentage / 100)
-                    )
-
-                    splits.append(
-                        {
-                            "user_id": member.id,
-                            "user_name": member.name,
-                            "amount_owed": amount,
-                            "calculation_method": f"{per_person_percentage:.1f}%",
-                            "is_paid": False,
-                        }
-                    )
-
-        return splits
-
-    def _adjust_for_rounding(
-        self, splits: List[Dict[str, Any]], target_total: float
-    ) -> List[Dict[str, Any]]:
-        """Adjust splits to ensure total equals target amount exactly"""
-
-        current_total = sum(split["amount_owed"] for split in splits)
-        difference = self._round_currency(target_total - current_total)
-
-        if abs(difference) > 0.01:  # Significant difference
-            raise BusinessRuleViolationError(
-                f"Split calculation error: total mismatch of ${difference:.2f}"
-            )
-
-        if difference != 0 and splits:
-            # Add difference to the largest split (most fair)
-            largest_split = max(splits, key=lambda s: s["amount_owed"])
-            largest_split["amount_owed"] = self._round_currency(
-                largest_split["amount_owed"] + difference
-            )
-            if abs(difference) > 0.005:  # Only note significant adjustments
-                largest_split["rounding_adjustment"] = difference
-
-        return splits
-
     def _round_currency(self, amount: float) -> float:
         """Round to 2 decimal places using proper currency rounding"""
         return float(
             Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         )
-
-    def _get_household_members(self, household_id: int) -> List[HouseholdMember]:
-        """Get all active members of the household using HouseholdMembership"""
-        members_query = (
-            self.db.query(User, HouseholdMembership)
-            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    User.is_active == True,
-                )
-            )
-            .all()
-        )
-
-        return [
-            HouseholdMember(
-                id=user.id,
-                name=user.name,
-                email=user.email,
-                role=membership.role,
-            )
-            for user, membership in members_query
-        ]
 
     def get_user_expense_summary(
         self, user_id: int, household_id: int
@@ -785,26 +567,6 @@ class ExpenseService:
 
         self.db.commit()
         return True
-
-    def _calculate_equal_splits(
-        self, total_amount: float, household_members: List[HouseholdMember]
-    ) -> List[Dict[str, Any]]:
-        """Equal split among all members"""
-        per_person = self._round_currency(total_amount / len(household_members))
-
-        splits = []
-        for member in household_members:
-            splits.append(
-                {
-                    "user_id": member.id,
-                    "user_name": member.name,
-                    "amount_owed": per_person,
-                    "calculation_method": "equal",
-                    "is_paid": False,
-                }
-            )
-
-        return splits
 
     def _validate_custom_splits(
         self,

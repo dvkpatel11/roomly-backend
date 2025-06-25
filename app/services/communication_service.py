@@ -744,32 +744,6 @@ class CommunicationService:
 
     # === HELPER METHODS ===
 
-    def _get_household_members(self, household_id: int) -> List[HouseholdMember]:
-        """Get all active members using HouseholdMembership"""
-
-        members_query = (
-            self.db.query(User, HouseholdMembership)
-            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    User.is_active == True,
-                )
-            )
-            .all()
-        )
-
-        return [
-            HouseholdMember(
-                id=user.id,
-                name=user.name,
-                email=user.email,
-                role=membership.role,
-            )
-            for user, membership in members_query
-        ]
-
     def _get_announcement_or_raise(self, announcement_id: int) -> Announcement:
         """Get announcement or raise exception"""
         announcement = (

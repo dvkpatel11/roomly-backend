@@ -10,6 +10,7 @@ from ..models.task import Task
 from ..models.event import Event
 from ..models.household_membership import HouseholdMembership
 from ..schemas.household import HouseholdCreate, HouseholdUpdate
+from ..utils.service_helpers import ServiceHelpers
 
 
 # Custom Exceptions for better error handling
@@ -222,59 +223,11 @@ class HouseholdService:
             self.db.rollback()
             raise HouseholdServiceError(f"Failed to update member role: {str(e)}")
 
-    def get_household_members(self, household_id: int) -> List[Dict[str, Any]]:
-        """Get all household members with optimized queries"""
-
-        # Optimized query to avoid N+1 problems
-        members_query = (
-            self.db.query(User, HouseholdMembership)
-            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                )
-            )
-            .order_by(
-                # Custom order: admin first, then by role, then by name
-                func.case(
-                    [(HouseholdMembership.role == HouseholdRole.ADMIN.value, 1)],
-                    else_=2,
-                ),
-                HouseholdMembership.role,
-                User.name,
-            )
-        )
-
-        # Get member statistics in batch
-        user_ids = [user.id for user, _ in members_query]
-        member_stats = self._get_batch_member_statistics(user_ids) if user_ids else {}
-
-        result = []
-        for user, membership in members_query:
-            result.append(
-                {
-                    "id": user.id,
-                    "name": user.name,
-                    "email": user.email,
-                    "phone": user.phone,
-                    "is_active": user.is_active,
-                    "joined_at": membership.joined_at,
-                    "role": membership.role,
-                    "is_admin": membership.role == HouseholdRole.ADMIN.value,
-                    "statistics": member_stats.get(
-                        user.id, self._get_empty_member_stats()
-                    ),
-                }
-            )
-
-        return result
-
     def get_household_details(self, household_id: int) -> Dict[str, Any]:
         """Get comprehensive household information"""
 
         household = self._get_household_or_raise(household_id)
-        members = self.get_household_members(household_id)
+        members = ServiceHelpers.get_household_members(household_id)
         health_score = self.calculate_household_health_score(household_id)
         statistics = self.get_household_statistics(household_id)
 

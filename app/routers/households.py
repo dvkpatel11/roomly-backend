@@ -18,7 +18,7 @@ from ..utils.router_helpers import (
 )
 from ..models.user import User
 from ..models.enums import HouseholdRole
-from .auth import get_current_user
+from ..utils.service_helpers import ServiceHelpers
 
 router = APIRouter(tags=["households"])
 
@@ -105,9 +105,8 @@ async def get_my_household_members(
 ):
     """Get household members with optional statistics"""
     current_user, household_id = user_household
-    household_service = HouseholdService(db)
 
-    members = household_service.get_household_members(household_id)
+    members = ServiceHelpers.get_household_members(household_id)
 
     return RouterResponse.success(
         data={

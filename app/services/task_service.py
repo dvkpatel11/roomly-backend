@@ -13,6 +13,7 @@ from ..schemas.task import (
     RecurrencePattern,
 )
 from dataclasses import dataclass
+from ..utils.service_helpers import ServiceHelpers
 
 
 # Custom Exceptions
@@ -69,7 +70,7 @@ class TaskService:
             raise PermissionDeniedError("User is not a member of this household")
 
         # Get household members for assignment
-        household_members = self._get_household_members(household_id)
+        household_members = ServiceHelpers.get_household_members(household_id)
         if not household_members:
             raise BusinessRuleViolationError("Household has no active members")
 
@@ -474,7 +475,7 @@ class TaskService:
         else:
             end_date = datetime(year, month + 1, 1)
 
-        members = self._get_household_members(household_id)
+        members = ServiceHelpers.get_household_members(household_id)
         leaderboard = []
 
         for member in members:
@@ -565,7 +566,7 @@ class TaskService:
     ) -> int:
         """Get next person in rotation using improved round-robin algorithm"""
 
-        members = self._get_household_members(household_id)
+        members = ServiceHelpers.get_household_members(household_id)
         if not members:
             raise BusinessRuleViolationError("No active household members found")
 
@@ -607,7 +608,7 @@ class TaskService:
         if not self._user_can_view_tasks(user_id, household_id):
             raise PermissionDeniedError("User cannot view household tasks")
 
-        members = self._get_household_members(household_id)
+        members = ServiceHelpers.get_household_members(household_id)
         if not members:
             return {"schedule": [], "members": []}
 
@@ -635,35 +636,6 @@ class TaskService:
         }
 
     # === HELPER METHODS ===
-
-    def _get_household_members(self, household_id: int) -> List[HouseholdMember]:
-        """Get all active members using HouseholdMembership"""
-
-        members_query = (
-            self.db.query(User, HouseholdMembership)
-            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
-            .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                    User.is_active == True,
-                )
-            )
-            .order_by(User.id)  # Consistent ordering for rotation
-            .all()
-        )
-
-        return [
-            HouseholdMember(
-                id=user.id,
-                name=user.name,
-                email=user.email,
-                role=membership.role,
-                joined_at=membership.joined_at,
-            )
-            for user, membership in members_query
-        ]
-
     def _get_task_or_raise(self, task_id: int) -> Task:
         """Get task or raise exception"""
         task = self.db.query(Task).filter(Task.id == task_id).first()
@@ -836,7 +808,7 @@ class TaskService:
             instances_to_create = 3  # 3 months ahead
 
         current_date = task.due_date
-        members = self._get_household_members(task.household_id)
+        members = ServiceHelpers.get_household_members(task.household_id)
 
         if not members:
             return
