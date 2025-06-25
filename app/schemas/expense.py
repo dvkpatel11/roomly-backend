@@ -2,7 +2,7 @@ from pydantic import BaseModel, validator, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
-from ..models.enums import BillType, ExpenseCategory, SplitMethod
+from ..models.enums import ExpenseCategory, SplitMethod
 
 
 class ExpenseBase(BaseModel):

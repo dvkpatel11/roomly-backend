@@ -2,21 +2,14 @@ from pydantic import BaseModel, validator, Field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
-from ..models.enums import AnnouncementType as AnnouncementCategory
-
-
-class AnnouncementPriority(str, Enum):
-    LOW = "low"
-    NORMAL = "normal"
-    HIGH = "high"
-    URGENT = "urgent"
+from ..models.enums import AnnouncementType as AnnouncementCategory, Priority
 
 
 class AnnouncementBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=2000)
     category: AnnouncementCategory
-    priority: AnnouncementPriority = AnnouncementPriority.NORMAL
+    priority: str = Priority.NORMAL.value
     is_pinned: bool = False
     expires_at: Optional[datetime] = None
 

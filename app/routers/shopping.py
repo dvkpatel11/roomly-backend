@@ -65,7 +65,6 @@ async def get_shopping_lists(
     if active_only:
         lists = shopping_service.get_active_shopping_lists(household_id=household_id)
     else:
-        # TODO: Add get_all_shopping_lists method to ShoppingService
         lists = shopping_service.get_active_shopping_lists(household_id=household_id)
 
     return RouterResponse.success(
