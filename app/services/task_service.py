@@ -215,9 +215,6 @@ class TaskService:
             task.completion_notes = completion_data.completion_notes
             task.photo_proof_url = completion_data.photo_proof_url
 
-            # Keep completed boolean for backward compatibility
-            task.completed = True
-
             self.db.commit()
             self.db.refresh(task)
 
@@ -246,14 +243,11 @@ class TaskService:
 
             # Update completion fields when marking as completed
             if new_status == TaskStatus.COMPLETED.value:
-                task.completed = True
                 task.completed_at = datetime.utcnow()
             elif (
                 task.status == TaskStatus.COMPLETED.value
                 and new_status != TaskStatus.COMPLETED.value
             ):
-                # Uncompleting task
-                task.completed = False
                 task.completed_at = None
 
             self.db.commit()

@@ -649,15 +649,17 @@ class HouseholdService:
             return 80  # Neutral score for no activity
 
         total_tasks = len(tasks)
-        completed_tasks = len(
-            [t for t in tasks if t.status == "completed" or t.completed]
-        )
+        completed_tasks = len([t for t in tasks if t.status == "completed"])
         overdue_tasks = len(
             [
                 t
                 for t in tasks
                 if t.status == "overdue"
-                or (not t.completed and t.due_date and t.due_date < datetime.utcnow())
+                or (
+                    not t.status != "completed"
+                    and t.due_date
+                    and t.due_date < datetime.utcnow()
+                )
             ]
         )
 
@@ -748,7 +750,7 @@ class HouseholdService:
                 and_(
                     Task.household_id == household_id,
                     Task.completed_at >= since_date,
-                    Task.completed == True,
+                    Task.status == "completed",
                 )
             )
             .distinct()

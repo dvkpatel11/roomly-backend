@@ -29,7 +29,7 @@ class SchedulingService:
                 Task.assigned_to == user_id,
                 Task.due_date >= start_of_day,
                 Task.due_date < end_of_day,
-                Task.completed == False,
+                Task.status != "completed",
             )
         )
 
@@ -247,7 +247,7 @@ class SchedulingService:
 
         return (
             self.db.query(Task)
-            .filter(and_(Task.assigned_to == user_id, Task.completed == False))
+            .filter(and_(Task.assigned_to == user_id, Task.status != "completed"))
             .count()
         )
 
@@ -269,7 +269,7 @@ class SchedulingService:
             .filter(
                 and_(
                     Task.assigned_to == user_id,
-                    Task.completed == True,
+                    Task.status == "completed",
                     Task.completed_at >= since_date,
                 )
             )
@@ -331,7 +331,7 @@ class SchedulingService:
                     Task.household_id == household_id,
                     Task.due_date >= start_date,
                     Task.due_date < end_date,
-                    Task.completed == False,
+                    Task.status != "completed",
                 )
             )
             .order_by(Task.due_date)

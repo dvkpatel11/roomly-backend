@@ -284,7 +284,7 @@ class NotificationService:
         # Get all overdue tasks
         overdue_tasks = (
             self.db.query(Task)
-            .filter(and_(Task.completed == False, Task.due_date < now))
+            .filter(and_(Task.status != "completed", Task.due_date < now))
             .all()
         )
 
