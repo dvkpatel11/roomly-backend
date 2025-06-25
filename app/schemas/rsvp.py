@@ -1,13 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
-from enum import Enum
-
-
-class RSVPStatus(str, Enum):
-    YES = "yes"
-    NO = "no"
-    MAYBE = "maybe"
+from ..models.enums import RSVPStatus
 
 
 class RSVPBase(BaseModel):

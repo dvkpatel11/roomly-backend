@@ -2,21 +2,8 @@ from pydantic import BaseModel, validator, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+from ..models.enums import BillType, ExpenseCategory, SplitMethod
 
-class SplitMethod(str, Enum):
-    EQUAL = "equal_split"
-    BY_USAGE = "by_usage"
-    SPECIFIC = "specific_amounts"
-    PERCENTAGE = "percentage"
-
-class ExpenseCategory(str, Enum):
-    GROCERIES = "groceries"
-    UTILITIES = "utilities"
-    RENT = "rent"
-    CLEANING = "cleaning"
-    ENTERTAINMENT = "entertainment"
-    MAINTENANCE = "maintenance"
-    OTHER = "other"
 
 class ExpenseBase(BaseModel):
     description: str = Field(..., min_length=1, max_length=200)
@@ -26,12 +13,14 @@ class ExpenseBase(BaseModel):
     receipt_url: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
 
+
 class ExpenseCreate(ExpenseBase):
-    @validator('description')
+    @validator("description")
     def description_not_empty(cls, v):
         if not v.strip():
-            raise ValueError('Description cannot be empty')
+            raise ValueError("Description cannot be empty")
         return v.strip()
+
 
 class ExpenseUpdate(BaseModel):
     description: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -41,6 +30,7 @@ class ExpenseUpdate(BaseModel):
     receipt_url: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=500)
 
+
 class ExpenseResponse(ExpenseBase):
     id: int
     household_id: int
@@ -48,9 +38,10 @@ class ExpenseResponse(ExpenseBase):
     created_at: datetime
     updated_at: Optional[datetime]
     split_details: Optional[Dict[str, Any]] = None
-    
+
     class Config:
         from_attributes = True
+
 
 class ExpenseSplit(BaseModel):
     user_id: int
@@ -58,6 +49,7 @@ class ExpenseSplit(BaseModel):
     amount_owed: float
     is_paid: bool = False
     payment_date: Optional[datetime] = None
+
 
 class ExpenseSplitCalculation(BaseModel):
     expense_id: int

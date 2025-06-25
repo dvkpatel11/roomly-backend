@@ -21,9 +21,10 @@ class TaskStatus(str, Enum):
     OVERDUE = "overdue"
 
 
-class TaskRecurrence(str, Enum):
+class RecurrencePattern(str, Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
     MONTHLY = "monthly"
     YEARLY = "yearly"
 
@@ -39,7 +40,8 @@ class ShoppingCategory(str, Enum):
     PRODUCE = "produce"
     DAIRY = "dairy"
     MEAT = "meat"
-    BAKERY = "bakery"
+    PANTRY = "pantry"
+    FROZEN = "frozen"
     BEVERAGES = "beverages"
     SNACKS = "snacks"
     HOUSEHOLD = "household"
@@ -58,14 +60,6 @@ class AnnouncementType(str, Enum):
     RULE = "rule"
 
 
-class BillType(str, Enum):
-    RENT = "rent"
-    UTILITIES = "utilities"
-    INTERNET = "internet"
-    GROCERIES = "groceries"
-    OTHER = "other"
-
-
 class EventType(str, Enum):
     MEETING = "meeting"
     PARTY = "party"
@@ -82,3 +76,41 @@ class GuestRelationship(str, Enum):
     FRIEND = "friend"
     COLLEAGUE = "colleague"
     OTHER = "other"
+
+
+class SplitMethod(str, Enum):
+    EQUAL = "equal_split"
+    BY_USAGE = "by_usage"
+    SPECIFIC = "specific_amounts"
+    PERCENTAGE = "percentage"
+
+
+class ExpenseCategory(str, Enum):
+    GROCERIES = "groceries"
+    UTILITIES = "utilities"
+    RENT = "rent"
+    CLEANING = "cleaning"
+    ENTERTAINMENT = "entertainment"
+    MAINTENANCE = "maintenance"
+    INTERNET = "internet"
+    TRANSPORTATION = "transportation"
+    OTHER = "other"
+
+
+class RSVPStatus(str, Enum):
+    YES = "yes"
+    NO = "no"
+    MAYBE = "maybe"
+
+
+class NotificationType(str, Enum):
+    BILL_DUE = "bill_due"
+    TASK_OVERDUE = "task_overdue"
+    TASK_ASSIGNED = "task_assigned"
+    EVENT_REMINDER = "event_reminder"
+    GUEST_REQUEST = "guest_request"
+    EXPENSE_ADDED = "expense_added"
+    PAYMENT_RECEIVED = "payment_received"
+    ANNOUNCEMENT = "announcement"
+    POLL_CREATED = "poll_created"
+    SYSTEM = "system"

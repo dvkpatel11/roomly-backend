@@ -2,20 +2,15 @@ from pydantic import BaseModel, validator, Field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
+from ..models.enums import AnnouncementType as AnnouncementCategory
 
-class AnnouncementCategory(str, Enum):
-    GENERAL = "general"
-    MAINTENANCE = "maintenance"
-    EVENT = "event"
-    RULE = "rule"
-    URGENT = "urgent"
-    FINANCIAL = "financial"
 
 class AnnouncementPriority(str, Enum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
     URGENT = "urgent"
+
 
 class AnnouncementBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -25,12 +20,14 @@ class AnnouncementBase(BaseModel):
     is_pinned: bool = False
     expires_at: Optional[datetime] = None
 
+
 class AnnouncementCreate(AnnouncementBase):
-    @validator('expires_at')
+    @validator("expires_at")
     def expires_in_future(cls, v):
         if v and v <= datetime.utcnow():
-            raise ValueError('Expiration date must be in the future')
+            raise ValueError("Expiration date must be in the future")
         return v
+
 
 class AnnouncementUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -40,6 +37,7 @@ class AnnouncementUpdate(BaseModel):
     is_pinned: Optional[bool] = None
     expires_at: Optional[datetime] = None
 
+
 class AnnouncementResponse(AnnouncementBase):
     id: int
     household_id: int
@@ -47,9 +45,10 @@ class AnnouncementResponse(AnnouncementBase):
     author_name: str
     is_expired: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
+
 
 class AnnouncementSummary(BaseModel):
     id: int

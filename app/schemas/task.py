@@ -4,26 +4,13 @@ from datetime import datetime
 from enum import Enum
 
 from app.models.enums import TaskStatus
-
-
-class TaskPriority(str, Enum):
-    LOW = "low"
-    NORMAL = "normal"
-    HIGH = "high"
-    URGENT = "urgent"
-
-
-class RecurrencePattern(str, Enum):
-    DAILY = "daily"
-    WEEKLY = "weekly"
-    BIWEEKLY = "biweekly"
-    MONTHLY = "monthly"
+from app.models.enums import Priority, RecurrencePattern
 
 
 class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    priority: TaskPriority = TaskPriority.NORMAL
+    priority: Priority = Priority.NORMAL
     estimated_duration: Optional[int] = Field(
         None, gt=0, description="Duration in minutes"
     )
@@ -47,7 +34,7 @@ class TaskCreate(TaskBase):
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    priority: Optional[TaskPriority] = None
+    priority: Optional[Priority] = None
     assigned_to: Optional[int] = None
     due_date: Optional[datetime] = None
     estimated_duration: Optional[int] = Field(None, gt=0)

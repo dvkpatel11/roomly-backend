@@ -365,11 +365,11 @@ async def get_overdue_tasks(
 @router.get("/config/priorities", response_model=Dict[str, Any])
 async def get_task_priorities():
     """Get available task priority levels"""
-    from ..schemas.task import TaskPriority
+    from ..schemas.task import Priority
 
     priorities = [
         {"value": priority.value, "label": priority.value.replace("_", " ").title()}
-        for priority in TaskPriority
+        for priority in Priority
     ]
 
     return RouterResponse.success(data={"priorities": priorities})
