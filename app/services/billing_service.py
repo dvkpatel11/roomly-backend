@@ -1,4 +1,3 @@
-from app.models.household_membership import HouseholdMembership
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from typing import List, Dict, Any, Optional

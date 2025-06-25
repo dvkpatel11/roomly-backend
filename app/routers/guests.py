@@ -1,13 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, status, Query, Body
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 from datetime import datetime
 from ..database import get_db
 from ..services.guest_service import GuestService
 from ..services.approval_service import ApprovalService
-from ..schemas.guest import GuestCreate, GuestResponse
-from ..schemas.guest_approval import GuestApprovalCreate
-from ..dependencies.permissions import require_household_member, require_household_admin
+from ..schemas.guest import GuestCreate
+from ..dependencies.permissions import require_household_member
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,

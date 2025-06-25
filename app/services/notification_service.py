@@ -1,4 +1,3 @@
-from app.models.household_membership import HouseholdMembership
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Dict, Any, Optional
@@ -568,5 +567,80 @@ class NotificationService:
                     "is_read": n.is_read,
                 }
                 for n in recent_notifications
+            ],
+        }
+
+    def get_notification_by_id(
+        self, notification_id: int, user_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve a single notification if the user is authorized"""
+
+        notification = (
+            self.db.query(Notification)
+            .filter(
+                Notification.id == notification_id,
+                Notification.user_id == user_id,
+            )
+            .first()
+        )
+
+        if not notification:
+            return None
+
+        return {
+            "id": notification.id,
+            "title": notification.title,
+            "message": notification.message,
+            "type": notification.notification_type,
+            "priority": notification.priority,
+            "created_at": notification.created_at,
+            "is_read": notification.is_read,
+            "related_entity_type": notification.related_entity_type,
+            "related_entity_id": notification.related_entity_id,
+            "action_url": notification.action_url,
+        }
+
+    def get_user_notifications(
+        self,
+        user_id: int,
+        limit: int = 20,
+        offset: int = 0,
+        unread_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Paginated retrieval of user's notifications"""
+
+        query = self.db.query(Notification).filter(Notification.user_id == user_id)
+
+        if unread_only:
+            query = query.filter(Notification.is_read == False)
+
+        total = query.count()
+
+        notifications = (
+            query.order_by(Notification.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        return {
+            "total_count": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total,
+            "notifications": [
+                {
+                    "id": n.id,
+                    "title": n.title,
+                    "message": n.message,
+                    "type": n.notification_type,
+                    "priority": n.priority,
+                    "created_at": n.created_at,
+                    "is_read": n.is_read,
+                    "related_entity_type": n.related_entity_type,
+                    "related_entity_id": n.related_entity_id,
+                    "action_url": n.action_url,
+                }
+                for n in notifications
             ],
         }

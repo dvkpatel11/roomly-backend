@@ -2,10 +2,9 @@
 
 from app.dependencies.permissions import (
     require_household_member,
-    require_household_admin,
 )
 from app.utils.router_helpers import handle_service_errors, RouterResponse
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -13,7 +12,7 @@ from ..database import get_db
 from ..services.event_service import EventService
 from ..services.scheduling_service import SchedulingService
 from ..services.approval_service import ApprovalService
-from ..schemas.event import EventCreate, EventUpdate
+from ..schemas.event import EventCreate
 from ..schemas.rsvp import RSVPCreate
 from ..models.user import User
 

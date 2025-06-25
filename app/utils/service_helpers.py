@@ -1,4 +1,5 @@
-from sqlalchemy.orm import Session, and_
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
 from typing import List, Dict, Any, Union

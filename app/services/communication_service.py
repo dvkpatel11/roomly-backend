@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from ..models.announcement import Announcement
 from ..models.poll import Poll, PollVote

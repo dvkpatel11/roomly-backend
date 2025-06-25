@@ -360,3 +360,118 @@ class GuestService:
             )
 
         return conflicts
+
+    def cancel_guest_request(
+        self, guest_id: int, cancelled_by: int, household_id: int
+    ) -> None:
+        """Cancel a guest request (host only)"""
+
+        guest = (
+            self.db.query(Guest)
+            .filter(
+                Guest.id == guest_id,
+                Guest.household_id == household_id,
+                Guest.hosted_by == cancelled_by,
+            )
+            .first()
+        )
+
+        if not guest:
+            raise ValueError("Guest not found or not authorized to cancel")
+
+        if guest.is_approved:
+            raise ValueError("Cannot cancel an approved guest")
+
+        self.db.delete(guest)
+        self.db.commit()
+
+    def check_guest_conflicts(
+        self,
+        household_id: int,
+        proposed_checkin: datetime,
+        proposed_checkout: Optional[datetime],
+        guest_count: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """Public-facing check for proposed guest stay conflicts"""
+
+        dummy_guest = Guest(
+            id=-1,
+            household_id=household_id,
+            check_in=proposed_checkin,
+            check_out=proposed_checkout,
+            is_overnight=True,
+        )
+        return self._check_guest_conflicts(dummy_guest, household_id)
+
+    def get_guest_templates(
+        self, household_id: int, user_id: int
+    ) -> List[Dict[str, Any]]:
+        """Return recently hosted guest entries for reuse as templates"""
+
+        recent_guests = (
+            self.db.query(Guest)
+            .filter(
+                Guest.household_id == household_id,
+                Guest.hosted_by == user_id,
+            )
+            .order_by(Guest.created_at.desc())
+            .limit(5)
+            .all()
+        )
+
+        return [
+            {
+                "name": g.name,
+                "email": g.email,
+                "phone": g.phone,
+                "relationship_to_host": g.relationship_to_host,
+                "is_overnight": g.is_overnight,
+                "notes": g.notes,
+                "special_requests": g.special_requests,
+            }
+            for g in recent_guests
+        ]
+
+    def get_user_hosted_guests(
+        self,
+        user_id: int,
+        household_id: int,
+        upcoming_only: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Get upcoming guests hosted by the user"""
+
+        now = datetime.utcnow()
+        query = self.db.query(Guest).filter(
+            Guest.household_id == household_id,
+            Guest.hosted_by == user_id,
+        )
+
+        if upcoming_only:
+            query = query.filter(Guest.check_in >= now)
+
+        total_count = query.count()
+        guests = query.order_by(Guest.check_in.asc()).offset(offset).limit(limit).all()
+
+        guest_list = [
+            {
+                "id": g.id,
+                "name": g.name,
+                "check_in": g.check_in,
+                "check_out": g.check_out,
+                "is_approved": g.is_approved,
+                "is_overnight": g.is_overnight,
+                "notes": g.notes,
+                "created_at": g.created_at,
+            }
+            for g in guests
+        ]
+
+        return {
+            "guests": guest_list,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total_count,
+        }

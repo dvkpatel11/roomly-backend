@@ -931,14 +931,3 @@ class HouseholdService:
         except Exception as e:
             self.db.rollback()
             raise HouseholdServiceError(f"Failed to update household: {str(e)}")
-
-    # TODO: Migration helper for future multi-household support
-    def _prepare_for_multi_household_migration(self) -> Dict[str, Any]:
-        """Future: Prepare data for multi-household migration"""
-        # This method will help when you want to support multiple households
-        # For now, it's just a placeholder for future development
-        return {
-            "migration_needed": False,
-            "current_model": "single_household",
-            "target_model": "multi_household",
-        }

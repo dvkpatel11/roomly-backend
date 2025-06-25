@@ -72,8 +72,3 @@ class ExpensePayment(Base):
     # Relationships
     expense = relationship("Expense", back_populates="payments")
     user = relationship("User", back_populates="expense_payments")
-
-    __table_args__ = (
-        Index("idx_expense_household_created_desc", "household_id", "created_at"),
-        Index("idx_expense_created_by_month", "created_by", "created_at"),
-    )

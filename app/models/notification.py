@@ -1,6 +1,4 @@
-from typing import List
 from sqlalchemy import (
-    Index,
     Column,
     Integer,
     String,
@@ -170,8 +168,3 @@ class NotificationPreference(Base):
         db_session.add(preferences)
         db_session.commit()
         return preferences
-
-    __table_args__ = (
-        Index("idx_notification_user_unread", "user_id", "is_read", "created_at"),
-        Index("idx_notification_household_priority", "household_id", "priority"),
-    )

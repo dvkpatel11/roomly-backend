@@ -279,6 +279,7 @@ async def join_household_by_invitation(
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
     """Join household using invitation code"""
+    current_user, household_id = user_household
     household_service = HouseholdService(db)
 
     invitation_code = join_data.get("invitation_code")

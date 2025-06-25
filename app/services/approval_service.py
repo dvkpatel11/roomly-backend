@@ -292,9 +292,26 @@ class ApprovalService:
         self.db.commit()
 
     def _create_event_approval_records(self, event_id: int, household_id: int):
-        """Create approval records for all household members"""
-        # In a full implementation, you'd have an EventApproval table
-        pass
+        from ..models.event_approval import EventApproval
+
+        members = (
+            self.db.query(User)
+            .join(HouseholdMembership, User.id == HouseholdMembership.user_id)
+            .filter(
+                HouseholdMembership.household_id == household_id,
+                HouseholdMembership.is_active == True,
+                User.is_active == True,
+            )
+            .all()
+        )
+
+        for member in members:
+            approval = EventApproval(
+                event_id=event_id, user_id=member.id, approved=None  # pending
+            )
+            self.db.add(approval)
+
+        self.db.commit()
 
     def _record_guest_approval(
         self, guest_id: int, user_id: int, approved: bool, reason: str = ""
@@ -331,8 +348,24 @@ class ApprovalService:
     def _record_event_approval(
         self, event_id: int, user_id: int, approved: bool, reason: str = ""
     ) -> bool:
-        """Record user's approval/denial of event"""
-        # Would update EventApproval table
+        from ..models.event_approval import EventApproval
+
+        approval = (
+            self.db.query(EventApproval)
+            .filter(
+                EventApproval.event_id == event_id, EventApproval.user_id == user_id
+            )
+            .first()
+        )
+
+        if not approval or approval.approved is not None:
+            return False  # Already voted or invalid
+
+        approval.approved = approved
+        approval.reason = reason
+        approval.created_at = datetime.utcnow()
+
+        self.db.commit()
         return True
 
     def _check_all_guest_approvals(self, guest_id: int, household_id: int) -> bool:
@@ -362,9 +395,24 @@ class ApprovalService:
         return approval_count >= total_members
 
     def _check_all_event_approvals(self, event_id: int, household_id: int) -> bool:
-        """Check if all household members have approved event"""
-        # For now, simplified logic
-        return True  # TODO: Implement proper approval tracking
+        from ..models.event_approval import EventApproval
+
+        total_members = (
+            self.db.query(HouseholdMembership)
+            .filter(
+                HouseholdMembership.household_id == household_id,
+                HouseholdMembership.is_active == True,
+            )
+            .count()
+        )
+
+        approval_count = (
+            self.db.query(EventApproval)
+            .filter(EventApproval.event_id == event_id, EventApproval.approved == True)
+            .count()
+        )
+
+        return approval_count >= total_members
 
     def _get_pending_guest_approvals_count(
         self, guest_id: int, household_id: int
@@ -397,19 +445,88 @@ class ApprovalService:
     def _get_pending_event_approvals_count(
         self, event_id: int, household_id: int
     ) -> int:
-        """FIXED: Get count of pending approvals for event using HouseholdMembership"""
+        from ..models.event_approval import EventApproval
 
-        # Get total household members using proper relationship
         total_members = (
             self.db.query(HouseholdMembership)
             .filter(
-                and_(
-                    HouseholdMembership.household_id == household_id,
-                    HouseholdMembership.is_active == True,
-                )
+                HouseholdMembership.household_id == household_id,
+                HouseholdMembership.is_active == True,
             )
             .count()
         )
 
-        # TODO: Subtract actual approvals recorded
-        return max(0, total_members - 1)  # Mock: assume 1 approval recorded
+        approval_count = (
+            self.db.query(EventApproval)
+            .filter(EventApproval.event_id == event_id, EventApproval.approved == True)
+            .count()
+        )
+
+        return max(0, total_members - approval_count)
+
+
+def get_user_pending_approvals(
+    self, user_id: int, household_id: int, approval_type: str
+) -> List[Dict[str, Any]]:
+    """Get pending approvals assigned to the current user (guest or event)"""
+
+    results = []
+
+    if approval_type == "guest":
+        pending = (
+            self.db.query(GuestApproval)
+            .join(Guest, Guest.id == GuestApproval.guest_id)
+            .filter(
+                and_(
+                    GuestApproval.user_id == user_id,
+                    GuestApproval.approved.is_(None),
+                    Guest.household_id == household_id,
+                    Guest.is_approved == False,
+                )
+            )
+            .all()
+        )
+
+        for pa in pending:
+            results.append(
+                {
+                    "type": "guest",
+                    "guest_id": pa.guest_id,
+                    "guest_name": pa.guest.name,
+                    "hosted_by": pa.guest.hosted_by,
+                    "check_in": pa.guest.check_in,
+                    "created_at": pa.created_at,
+                }
+            )
+
+    elif approval_type == "event":
+        from ..models.event_approval import EventApproval
+
+        pending = (
+            self.db.query(EventApproval)
+            .join(Event, Event.id == EventApproval.event_id)
+            .filter(
+                EventApproval.user_id == user_id,
+                EventApproval.approved.is_(None),
+                Event.household_id == household_id,
+                Event.status == "pending_approval",
+            )
+            .all()
+        )
+
+        for ea in pending:
+            results.append(
+                {
+                    "type": "event",
+                    "event_id": ea.event_id,
+                    "event_title": ea.event.title,
+                    "created_by": ea.event.created_by,
+                    "start_date": ea.event.start_date,
+                    "created_at": ea.created_at,
+                }
+            )
+
+    else:
+        raise ValueError("Invalid approval_type")
+
+    return results

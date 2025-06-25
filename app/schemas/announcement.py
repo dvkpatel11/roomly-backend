@@ -1,7 +1,6 @@
 from pydantic import BaseModel, validator, Field
 from typing import Optional
 from datetime import datetime
-from enum import Enum
 from ..models.enums import AnnouncementType as AnnouncementCategory, Priority
 
 

@@ -41,46 +41,6 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
-# Auth Helper Functions
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-    supabase: Client = Depends(get_supabase),
-) -> User:
-    """Get current authenticated user from Supabase token"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-    try:
-        # Verify token with Supabase
-        auth_response = supabase.auth.get_user(credentials.credentials)
-
-        if not auth_response.user:
-            raise credentials_exception
-
-        supabase_user = auth_response.user
-
-        # Find user in our database by Supabase ID
-        user = (
-            db.query(User)
-            .filter(User.supabase_id == supabase_user.id, User.is_active == True)
-            .first()
-        )
-
-        # If user doesn't exist in our DB, create them
-        if not user:
-            user = User.create_from_supabase(supabase_user, db)
-
-        return user
-
-    except Exception as e:
-        logger.error(f"Authentication error: {e}")
-        raise credentials_exception
-
-
 # Auth Endpoints
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
 @handle_service_errors

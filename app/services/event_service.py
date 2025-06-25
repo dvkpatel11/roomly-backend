@@ -826,3 +826,28 @@ class EventService:
                 else 0
             ),
         }
+
+    def get_event_rsvps(self, event_id: int) -> List[Dict[str, Any]]:
+        """Get all RSVPs for a given event with user names"""
+
+        rsvps = (
+            self.db.query(RSVP, User)
+            .join(User, RSVP.user_id == User.id)
+            .filter(RSVP.event_id == event_id)
+            .order_by(RSVP.created_at)
+            .all()
+        )
+
+        return [
+            {
+                "user_id": user.id,
+                "user_name": user.name,
+                "status": rsvp.status,
+                "guest_count": rsvp.guest_count,
+                "special_requests": rsvp.special_requests,
+                "response_notes": rsvp.response_notes,
+                "responded_at": rsvp.created_at,
+                "updated_at": rsvp.updated_at,
+            }
+            for rsvp, user in rsvps
+        ]
