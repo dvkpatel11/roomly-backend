@@ -87,55 +87,6 @@ def handle_service_errors(func: Callable) -> Callable:
     return wrapper
 
 
-def validate_pagination(
-    limit: int, offset: int, max_limit: int = 100
-) -> tuple[int, int]:
-    """Validate and normalize pagination parameters"""
-    if limit <= 0:
-        limit = 10
-    elif limit > max_limit:
-        limit = max_limit
-
-    if offset < 0:
-        offset = 0
-
-    return limit, offset
-
-
-def create_pagination_response(
-    items: list, total_count: int, limit: int, offset: int, key_name: str = "items"
-) -> dict:
-    """Create standardized pagination response"""
-    return {
-        key_name: items,
-        "total_count": total_count,
-        "limit": limit,
-        "offset": offset,
-        "has_more": offset + limit < total_count,
-        "page": (offset // limit) + 1 if limit > 0 else 1,
-        "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1,
-    }
-
-
-def extract_error_message(error: Exception) -> str:
-    """Extract user-friendly error message from exception"""
-    error_str = str(error).lower()
-
-    # Common error message mappings
-    if "not found" in error_str:
-        return "The requested resource was not found"
-    elif "permission" in error_str or "access denied" in error_str:
-        return "You don't have permission to perform this action"
-    elif "already exists" in error_str:
-        return "This resource already exists"
-    elif "invalid" in error_str:
-        return "Invalid input provided"
-    elif "required" in error_str:
-        return "Required information is missing"
-    else:
-        return str(error)
-
-
 class RouterResponse:
     """Helper class for creating standardized API responses"""
 
