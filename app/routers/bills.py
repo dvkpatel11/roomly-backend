@@ -1,21 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Dict, Any
 from ..database import get_db
 from ..services.billing_service import BillingService
-from ..schemas.bill import BillCreate, BillUpdate
+from ..schemas.bill import BillCreate, BillUpdate, BillResponse, BillPaymentRecord
 from ..dependencies.permissions import require_household_member, require_household_admin
 from ..utils.router_helpers import (
     handle_service_errors,
-    RouterResponse,
 )
 from ..models.user import User
-from ..utils.constants import AppConstants
+from ..utils.constants import ResponseMessages
+from ..schemas.common import (
+    ResponseFactory,
+    SuccessResponse,
+    PaginationParams,
+    ConfigResponse,
+    ConfigOption,
+)
 
 router = APIRouter(tags=["bills"])
 
 
-@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=SuccessResponse[BillResponse])
 @handle_service_errors
 async def create_recurring_bill(
     bill_data: BillCreate,
@@ -32,17 +37,14 @@ async def create_recurring_bill(
         created_by=current_user.id,
     )
 
-    return RouterResponse.created(
-        data={"bill": bill}, message="Recurring bill created successfully"
-    )
+    return ResponseFactory.created(data=bill, message=ResponseMessages.BILL_CREATED)
 
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_household_bills(
     active_only: bool = Query(True, description="Show only active bills"),
-    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
-    offset: int = Query(0, ge=0),
+    pagination: PaginationParams = Depends(),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -50,9 +52,9 @@ async def get_household_bills(
     current_user, household_id = user_household
     billing_service = BillingService(db)
 
-    bills = billing_service.get_household_bills(household_id, active_only=True)
+    bills = billing_service.get_household_bills(household_id, active_only=active_only)
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "bills": bills,
             "total_count": len(bills),
@@ -61,7 +63,7 @@ async def get_household_bills(
     )
 
 
-@router.get("/upcoming", response_model=Dict[str, Any])
+@router.get("/upcoming", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_upcoming_bills(
     days_ahead: int = Query(7, ge=1, le=30, description="Days to look ahead"),
@@ -76,7 +78,7 @@ async def get_upcoming_bills(
         household_id=household_id, days_ahead=days_ahead
     )
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "upcoming_bills": upcoming,
             "days_ahead": days_ahead,
@@ -85,7 +87,7 @@ async def get_upcoming_bills(
     )
 
 
-@router.get("/overdue", response_model=Dict[str, Any])
+@router.get("/overdue", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_overdue_bills(
     db: Session = Depends(get_db),
@@ -97,16 +99,18 @@ async def get_overdue_bills(
 
     overdue = billing_service.get_overdue_bills(household_id=household_id)
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "overdue_bills": overdue,
             "count": len(overdue),
-            "total_overdue_amount": sum(bill["amount_remaining"] for bill in overdue),
+            "total_overdue_amount": sum(
+                bill.get("amount_remaining", 0) for bill in overdue
+            ),
         }
     )
 
 
-@router.get("/{bill_id}", response_model=Dict[str, Any])
+@router.get("/{bill_id}", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_bill_details(
     bill_id: int,
@@ -117,7 +121,7 @@ async def get_bill_details(
 
     details = billing_service.get_bill_details(bill_id)
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "bill_id": bill_id,
             "details": details,
@@ -125,7 +129,7 @@ async def get_bill_details(
     )
 
 
-@router.put("/{bill_id}", response_model=Dict[str, Any])
+@router.put("/{bill_id}", response_model=SuccessResponse[BillResponse])
 @handle_service_errors
 async def update_bill(
     bill_id: int,
@@ -139,12 +143,10 @@ async def update_bill(
 
     bill = billing_service.update_bill(bill_id, bill_update)
 
-    return RouterResponse.updated(
-        data={"bill": bill}, message="Bill updated successfully"
-    )
+    return ResponseFactory.success(data=bill, message=ResponseMessages.BILL_UPDATED)
 
 
-@router.delete("/{bill_id}", response_model=Dict[str, Any])
+@router.delete("/{bill_id}", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def deactivate_bill(
     bill_id: int,
@@ -162,37 +164,53 @@ async def deactivate_bill(
             status_code=status.HTTP_404_NOT_FOUND, detail="Bill not found"
         )
 
-    return RouterResponse.success(message="Bill deactivated successfully")
+    return ResponseFactory.success(
+        data={"bill_id": bill_id, "deactivated": True},
+        message="Bill deactivated successfully",
+    )
 
 
-@router.post("/{bill_id}/payments")
+# =============================================================================
+# PAYMENT ENDPOINTS
+# =============================================================================
+
+
+@router.post("/{bill_id}/payments", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def record_bill_payment(
     bill_id: int,
-    payment_data: Dict[str, Any],
+    payment_data: BillPaymentRecord,
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
+    """Record a payment for a bill"""
     current_user, household_id = user_household
     billing_service = BillingService(db)
+
     payment = billing_service.record_bill_payment(
-        bill_id=bill_id, paid_by=current_user.id, **payment_data
+        bill_id=bill_id,
+        paid_by=current_user.id,
+        amount_paid=payment_data.amount_paid,
+        payment_method=payment_data.payment_method,
+        notes=payment_data.notes,
+        for_month=payment_data.for_month,
     )
 
-    return RouterResponse.created(
+    return ResponseFactory.created(
         data={
             "payment": {
                 "id": payment.id,
                 "amount_paid": payment.amount_paid,
                 "payment_date": payment.payment_date,
                 "payment_method": payment.payment_method,
+                "for_month": payment.for_month,
             }
         },
-        message="Payment recorded successfully",
+        message=ResponseMessages.BILL_PAYMENT_RECORDED,
     )
 
 
-@router.get("/{bill_id}/payment-history", response_model=Dict[str, Any])
+@router.get("/{bill_id}/payment-history", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_bill_payment_history(
     bill_id: int,
@@ -208,7 +226,7 @@ async def get_bill_payment_history(
         bill_id=bill_id, months_back=months_back
     )
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "payment_history": history,
             "bill_id": bill_id,
@@ -217,7 +235,12 @@ async def get_bill_payment_history(
     )
 
 
-@router.get("/summary", response_model=Dict[str, Any])
+# =============================================================================
+# SUMMARY & ANALYTICS ENDPOINTS
+# =============================================================================
+
+
+@router.get("/summary", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_billing_summary(
     db: Session = Depends(get_db),
@@ -229,31 +252,55 @@ async def get_billing_summary(
 
     summary = billing_service.get_household_billing_summary(household_id=household_id)
 
-    return RouterResponse.success(data={"billing_summary": summary})
+    return ResponseFactory.success(data={"billing_summary": summary})
 
 
-@router.get("/config/categories", response_model=Dict[str, Any])
+# =============================================================================
+# CONFIGURATION ENDPOINTS
+# =============================================================================
+
+
+@router.get("/config/categories", response_model=SuccessResponse[ConfigResponse])
 async def get_bill_categories():
     """Get available bill categories"""
-    from ..utils.constants import ExpenseCategory
+    from ..models.enums import ExpenseCategory
 
-    categories = [
-        {"value": cat.value, "label": cat.value.replace("_", " ").title()}
+    # Filter to bill-relevant categories
+    bill_categories = ["utilities", "rent", "internet", "maintenance"]
+
+    options = [
+        ConfigOption(
+            value=cat.value,
+            label=cat.value.replace("_", " ").title(),
+            description=f"Bills related to {cat.value.replace('_', ' ')}",
+        )
         for cat in ExpenseCategory
-        if cat.value in ["utilities", "rent", "internet", "maintenance"]
+        if cat.value in bill_categories
     ]
 
-    return RouterResponse.success(data={"categories": categories})
+    return ResponseFactory.success(
+        data=ConfigResponse(
+            options=options, total_count=len(options), category="Bill Categories"
+        )
+    )
 
 
-@router.get("/config/split-methods", response_model=Dict[str, Any])
+@router.get("/config/split-methods", response_model=SuccessResponse[ConfigResponse])
 async def get_split_methods():
     """Get available split methods for bills"""
-    from ..utils.constants import SplitMethod
+    from ..models.enums import SplitMethod
 
-    methods = [
-        {"value": method.value, "label": method.value.replace("_", " ").title()}
+    options = [
+        ConfigOption(
+            value=method.value,
+            label=method.value.replace("_", " ").title(),
+            description=f"Split bills using {method.value.replace('_', ' ')} method",
+        )
         for method in SplitMethod
     ]
 
-    return RouterResponse.success(data={"split_methods": methods})
+    return ResponseFactory.success(
+        data=ConfigResponse(
+            options=options, total_count=len(options), category="Split Methods"
+        )
+    )

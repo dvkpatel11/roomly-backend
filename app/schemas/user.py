@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
+from ..utils.validation import ValidationHelpers
 
 
 class UserBase(BaseModel):
@@ -27,22 +28,11 @@ class UserCreate(BaseModel):
 
     @validator("email")
     def validate_email(cls, v):
-        import re
-
-        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-        if not re.match(pattern, v):
-            raise ValueError("Invalid email format")
-        return v.lower()
+        return ValidationHelpers.validate_email(v)
 
     @validator("phone")
     def validate_phone(cls, v):
-        if v is None:
-            return v
-        # Remove all non-numeric characters for validation
-        numeric_phone = "".join(filter(str.isdigit, v))
-        if len(numeric_phone) < 10:
-            raise ValueError("Phone number must be at least 10 digits")
-        return v
+        return ValidationHelpers.validate_phone(v)
 
 
 class UserUpdate(BaseModel):
@@ -55,12 +45,7 @@ class UserUpdate(BaseModel):
 
     @validator("phone")
     def validate_phone(cls, v):
-        if v is None:
-            return v
-        numeric_phone = "".join(filter(str.isdigit, v))
-        if len(numeric_phone) < 10:
-            raise ValueError("Phone number must be at least 10 digits")
-        return v
+        return ValidationHelpers.validate_phone(v)
 
 
 class UserResponse(UserBase):
@@ -123,12 +108,7 @@ class UserInvitation(BaseModel):
 
     @validator("email")
     def validate_email(cls, v):
-        import re
-
-        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-        if not re.match(pattern, v):
-            raise ValueError("Invalid email format")
-        return v.lower()
+        return ValidationHelpers.validate_email(v)
 
     @validator("role")
     def validate_role(cls, v):

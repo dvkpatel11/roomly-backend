@@ -1,28 +1,39 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Dict, Any, Optional
+from typing import List, Optional
 from ..database import get_db
 from ..services.task_service import TaskService
 from ..schemas.task import (
     TaskCreate,
+    TaskStatusUpdate,
     TaskUpdate,
     TaskComplete,
     TaskResponse,
+    TaskLeaderboard,
+    TaskStatistics,
+    TaskReassignment,
+    TaskStatistics,
 )
-from ..dependencies.permissions import require_household_member, require_household_admin
+from ..schemas.common import (
+    SuccessResponse,
+    PaginatedResponse,
+    ResponseFactory,
+    PaginationParams,
+    ConfigResponse,
+    ConfigOption,
+)
+from ..dependencies.permissions import require_household_member
 from ..utils.router_helpers import (
     handle_service_errors,
-    RouterResponse,
-    validate_pagination,
 )
 from ..models.user import User
 from ..models.enums import TaskStatus
-from ..utils.constants import AppConstants
+from ..utils.constants import ResponseMessages
 
 router = APIRouter(tags=["tasks"])
 
 
-@router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=SuccessResponse[TaskResponse])
 @handle_service_errors
 async def create_task(
     task_data: TaskCreate,
@@ -43,18 +54,17 @@ async def create_task(
         use_rotation=use_rotation,
     )
 
-    return task
+    return ResponseFactory.created(data=task, message=ResponseMessages.TASK_CREATED)
 
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("/", response_model=PaginatedResponse[TaskResponse])
 @handle_service_errors
 async def get_household_tasks(
+    pagination: PaginationParams = Depends(),
     status: Optional[str] = Query(None, description="Filter by task status"),
     assigned_to: Optional[int] = Query(None, description="Filter by assignee"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     overdue_only: bool = Query(False, description="Show only overdue tasks"),
-    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
-    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -62,24 +72,36 @@ async def get_household_tasks(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
     result = task_service.get_household_tasks(
         household_id=household_id,
         user_id=current_user.id,
-        limit=limit,
-        offset=offset,
+        limit=pagination.limit,
+        offset=pagination.offset,
         status=status,
         assigned_to=assigned_to,
         priority=priority,
         overdue_only=overdue_only,
     )
 
-    return RouterResponse.success(data=result)
+    # Create pagination info from result
+    from ..schemas.common import PaginationInfo
+
+    tasks = result.get("tasks", [])
+    total_count = result.get("total_count", 0)
+
+    pagination_info = PaginationInfo(
+        current_page=pagination.page,
+        page_size=pagination.page_size,
+        total_items=total_count,
+        total_pages=(total_count + pagination.page_size - 1) // pagination.page_size,
+        has_next=pagination.offset + pagination.page_size < total_count,
+        has_previous=pagination.page > 1,
+    )
+
+    return ResponseFactory.paginated(data=tasks, pagination=pagination_info)
 
 
-@router.get("/me", response_model=Dict[str, Any])
+@router.get("/me", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_my_task_summary(
     include_completed: bool = Query(False, description="Include completed tasks"),
@@ -94,10 +116,10 @@ async def get_my_task_summary(
         user_id=current_user.id, household_id=household_id
     )
 
-    return RouterResponse.success(data=summary)
+    return ResponseFactory.success(data=summary)
 
 
-@router.get("/{task_id}", response_model=Dict[str, Any])
+@router.get("/{task_id}", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_task_details(
     task_id: int,
@@ -146,7 +168,7 @@ async def get_task_details(
             "can_reassign": current_user.id == task.created_by,
         }
 
-        return RouterResponse.success(data={"task": task_details})
+        return ResponseFactory.success(data={"task": task_details})
 
     except Exception as e:
         if "not found" in str(e).lower():
@@ -156,7 +178,7 @@ async def get_task_details(
         raise
 
 
-@router.put("/{task_id}", response_model=Dict[str, Any])
+@router.put("/{task_id}", response_model=SuccessResponse[TaskResponse])
 @handle_service_errors
 async def update_task(
     task_id: int,
@@ -172,7 +194,7 @@ async def update_task(
         task_id=task_id, task_updates=task_updates, updated_by=current_user.id
     )
 
-    return RouterResponse.updated(data={"task": task})
+    return ResponseFactory.success(data=task, message=ResponseMessages.TASK_UPDATED)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -189,7 +211,7 @@ async def delete_task(
     task_service.delete_task(task_id=task_id, deleted_by=current_user.id)
 
 
-@router.put("/{task_id}/complete", response_model=Dict[str, Any])
+@router.put("/{task_id}/complete", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def complete_task(
     task_id: int,
@@ -205,25 +227,27 @@ async def complete_task(
         task_id=task_id, user_id=current_user.id, completion_data=completion_data
     )
 
-    return RouterResponse.success(
-        data={
-            "task": {
-                "id": task.id,
-                "title": task.title,
-                "status": task.status,
-                "completed_at": task.completed_at,
-            },
-            "completion_time": task.completed_at,
+    completion_response = {
+        "task": {
+            "id": task.id,
+            "title": task.title,
+            "status": task.status,
+            "completed_at": task.completed_at,
         },
-        message="Task completed successfully",
+        "completion_time": task.completed_at,
+    }
+
+    return ResponseFactory.success(
+        data=completion_response,
+        message=ResponseMessages.TASK_COMPLETED,
     )
 
 
-@router.put("/{task_id}/status", response_model=Dict[str, Any])
+@router.put("/{task_id}/status", response_model=SuccessResponse[TaskResponse])
 @handle_service_errors
 async def update_task_status(
     task_id: int,
-    status_data: Dict[str, str] = Body(..., example={"status": "in_progress"}),
+    status_data: TaskStatusUpdate,
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -234,19 +258,17 @@ async def update_task_status(
     task = task_service.update_task_status(
         task_id=task_id,
         user_id=current_user.id,
-        **status_data,
+        status=status_data.status,
     )
 
-    return RouterResponse.updated(data={"task": task})
+    return ResponseFactory.success(data=task, message=ResponseMessages.TASK_UPDATED)
 
 
-@router.put("/{task_id}/reassign", response_model=Dict[str, Any])
+@router.put("/{task_id}/reassign", response_model=SuccessResponse[TaskResponse])
 @handle_service_errors
 async def reassign_task(
     task_id: int,
-    reassign_data: Dict[str, Any] = Body(
-        ..., example={"new_assignee_id": 2, "reason": "Better availability"}
-    ),
+    reassign_data: TaskReassignment,
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -254,25 +276,18 @@ async def reassign_task(
     current_user, household_id = user_household
     task_service = TaskService(db)
 
-    new_assignee_id = reassign_data.get("new_assignee_id")
-    if not new_assignee_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="new_assignee_id is required",
-        )
-
     task = task_service.reassign_task(
         task_id=task_id,
-        new_assignee_id=new_assignee_id,
+        new_assignee_id=reassign_data.new_assignee_id,
         reassigned_by=current_user.id,
     )
 
-    return RouterResponse.updated(
-        data={"task": task}, message=f"Task reassigned successfully"
-    )
+    return ResponseFactory.success(data=task, message=ResponseMessages.TASK_UPDATED)
 
 
-@router.get("/leaderboard/current", response_model=Dict[str, Any])
+@router.get(
+    "/leaderboard/current", response_model=SuccessResponse[List[TaskLeaderboard]]
+)
 @handle_service_errors
 async def get_task_leaderboard(
     month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
@@ -288,17 +303,10 @@ async def get_task_leaderboard(
         household_id=household_id, user_id=current_user.id, month=month, year=year
     )
 
-    return RouterResponse.success(
-        data={
-            "leaderboard": leaderboard,
-            "month": month,
-            "year": year,
-            "total_members": len(leaderboard),
-        }
-    )
+    return ResponseFactory.success(data=leaderboard)
 
 
-@router.get("/me/score", response_model=Dict[str, Any])
+@router.get("/me/score", response_model=SuccessResponse[TaskLeaderboard])
 @handle_service_errors
 async def get_my_task_score(
     month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
@@ -314,10 +322,10 @@ async def get_my_task_score(
         user_id=current_user.id, household_id=household_id, month=month, year=year
     )
 
-    return RouterResponse.success(data=score)
+    return ResponseFactory.success(data=score)
 
 
-@router.get("/rotation/schedule", response_model=Dict[str, Any])
+@router.get("/rotation/schedule", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_rotation_schedule(
     weeks_ahead: int = Query(4, ge=1, le=12, description="Weeks to show"),
@@ -332,10 +340,10 @@ async def get_rotation_schedule(
         household_id=household_id, user_id=current_user.id, weeks_ahead=weeks_ahead
     )
 
-    return RouterResponse.success(data=schedule)
+    return ResponseFactory.success(data=schedule)
 
 
-@router.get("/overdue", response_model=Dict[str, Any])
+@router.get("/overdue", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_overdue_tasks(
     db: Session = Depends(get_db),
@@ -349,93 +357,42 @@ async def get_overdue_tasks(
         household_id=household_id
     )
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={"overdue_tasks": overdue_tasks, "count": len(overdue_tasks)}
     )
 
 
-@router.get("/config/priorities", response_model=Dict[str, Any])
+@router.get("/config/priorities", response_model=SuccessResponse[ConfigResponse])
 async def get_task_priorities():
     """Get available task priority levels"""
     from ..schemas.task import Priority
 
-    priorities = [
-        {"value": priority.value, "label": priority.value.replace("_", " ").title()}
+    options = [
+        ConfigOption(
+            value=priority.value, label=priority.value.replace("_", " ").title()
+        )
         for priority in Priority
     ]
 
-    return RouterResponse.success(data={"priorities": priorities})
-
-
-@router.get("/config/statuses", response_model=Dict[str, Any])
-async def get_task_statuses():
-    """Get available task status options"""
-    statuses = [
-        {"value": status.value, "label": status.value.replace("_", " ").title()}
-        for status in TaskStatus
-    ]
-
-    return RouterResponse.success(data={"statuses": statuses})
-
-
-@router.post("/bulk/reassign", response_model=Dict[str, Any])
-@handle_service_errors
-async def bulk_reassign_tasks(
-    bulk_data: Dict[str, Any] = Body(
-        ...,
-        example={
-            "task_ids": [1, 2, 3],
-            "new_assignee_id": 2,
-            "reason": "Workload rebalancing",
-        },
-    ),
-    db: Session = Depends(get_db),
-    user_household: tuple[User, int] = Depends(require_household_admin),  # Admin only
-):
-    """Bulk reassign multiple tasks to a user (admin only)"""
-    current_user, household_id = user_household
-    task_service = TaskService(db)
-
-    task_ids = bulk_data.get("task_ids", [])
-    new_assignee_id = bulk_data.get("new_assignee_id")
-
-    if not task_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="task_ids list is required"
-        )
-
-    if not new_assignee_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="new_assignee_id is required",
-        )
-
-    updated_tasks = []
-    failed_tasks = []
-
-    for task_id in task_ids:
-        try:
-            task = task_service.reassign_task(
-                task_id=task_id,
-                new_assignee_id=new_assignee_id,
-                reassigned_by=current_user.id,
-            )
-            updated_tasks.append({"task_id": task_id, "success": True})
-        except Exception as e:
-            failed_tasks.append({"task_id": task_id, "error": str(e)})
-
-    return RouterResponse.success(
-        data={
-            "updated_count": len(updated_tasks),
-            "failed_count": len(failed_tasks),
-            "updated_tasks": updated_tasks,
-            "failed_tasks": failed_tasks,
-        },
-        message=f"Bulk reassignment completed: {len(updated_tasks)} successful, {len(failed_tasks)} failed",
+    return ResponseFactory.success(
+        data=ConfigResponse(options=options, total_count=len(options))
     )
 
 
-@router.get("/statistics/household", response_model=Dict[str, Any])
+@router.get("/config/statuses", response_model=SuccessResponse[ConfigResponse])
+async def get_task_statuses():
+    """Get available task status options"""
+    options = [
+        ConfigOption(value=status.value, label=status.value.replace("_", " ").title())
+        for status in TaskStatus
+    ]
+
+    return ResponseFactory.success(
+        data=ConfigResponse(options=options, total_count=len(options))
+    )
+
+
+@router.get("/statistics/household", response_model=SuccessResponse[TaskStatistics])
 @handle_service_errors
 async def get_household_task_statistics(
     months_back: int = Query(6, ge=1, le=24, description="Months of data to analyze"),
@@ -465,15 +422,15 @@ async def get_household_task_statistics(
         else 0
     )
 
-    statistics = {
-        "household_id": household_id,
-        "period_months": months_back,
-        "total_members": total_members,
-        "total_completed_tasks": total_completed_tasks,
-        "average_completion_rate": round(avg_completion_rate, 1),
-        "overdue_tasks_count": len(overdue_tasks),
-        "leaderboard_preview": leaderboard[:3],  # Top 3
-        "most_productive_member": leaderboard[0] if leaderboard else None,
-    }
+    statistics = TaskStatistics(
+        household_id=household_id,
+        period_months=months_back,
+        total_members=total_members,
+        total_completed_tasks=total_completed_tasks,
+        average_completion_rate=round(avg_completion_rate, 1),
+        overdue_tasks_count=len(overdue_tasks),
+        leaderboard_preview=leaderboard[:3],  # Top 3
+        most_productive_member=leaderboard[0] if leaderboard else None,
+    )
 
-    return RouterResponse.success(data=statistics)
+    return ResponseFactory.success(data=statistics)

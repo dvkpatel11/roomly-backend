@@ -1,6 +1,16 @@
 from enum import Enum
 
 
+class ResponseMessages:
+    """Standard API response messages"""
+
+    # Success messages
+    SUCCESS = "Success"
+    CREATED = "Created successfully"
+    UPDATED = "Updated successfully"
+    DELETED = "Deleted successfully"
+
+
 # Application Constants
 class AppConstants:
     # Pagination
@@ -195,7 +205,6 @@ class DefaultSettings:
     SEARCH_RESULTS_LIMIT = 50
 
 
-# Error Codes
 class ErrorCodes:
     VALIDATION_ERROR = "VALIDATION_ERROR"
     AUTHENTICATION_ERROR = "AUTH_ERROR"

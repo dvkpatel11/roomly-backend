@@ -50,3 +50,9 @@ class AnnouncementSummary(BaseModel):
     is_pinned: bool
     created_at: datetime
     author_name: str
+
+
+class AnnouncementPin(BaseModel):
+    pinned: bool = Field(..., description="Whether to pin or unpin the announcement")
+
+

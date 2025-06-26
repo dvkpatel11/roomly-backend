@@ -2,6 +2,8 @@ from pydantic import BaseModel, validator
 from typing import Any, Dict, Optional
 from datetime import datetime
 from ..models.enums import ExpenseCategory, SplitMethod
+from ..utils.validation import ValidationHelpers
+from pydantic import Field
 
 
 class BillBase(BaseModel):
@@ -41,9 +43,7 @@ class BillUpdate(BaseModel):
 
     @validator("amount")
     def validate_amount(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Amount must be positive")
-        return v
+        return ValidationHelpers.validate_amount(v) if v is not None else v
 
 
 class BillResponse(BillBase):
@@ -59,4 +59,12 @@ class BillResponse(BillBase):
         from_attributes = True
 
 
-__all__ = ["BillBase", "BillCreate", "BillUpdate", "BillResponse"]
+class BillPaymentRecord(BaseModel):
+    amount_paid: float = Field(..., gt=0, description="Amount being paid")
+    payment_method: Optional[str] = Field(
+        None, max_length=50, description="How payment was made"
+    )
+    notes: Optional[str] = Field(None, max_length=200, description="Payment notes")
+    for_month: str = Field(
+        ..., description="Month this payment is for (YYYY-MM format)"
+    )

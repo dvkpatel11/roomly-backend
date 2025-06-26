@@ -2,6 +2,7 @@ import re
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 from .constants import AppConstants
+from datetime import timedelta
 
 
 class ValidationHelpers:
@@ -39,7 +40,16 @@ class ValidationHelpers:
     def validate_split_ratios(
         ratios: Dict[int, float], total_amount: float
     ) -> Dict[str, Any]:
-        """Validate expense split ratios"""
+        """
+        Validate expense split ratios.
+
+        Returns:
+            dict: {
+                "valid": bool,         # Whether the split ratios are valid
+                "errors": list,        # List of error messages (if any)
+                "total_ratio": float   # The sum of all split ratios
+            }
+        """
         errors = []
 
         if not ratios:
@@ -162,46 +172,3 @@ class ValidationHelpers:
                 }
 
         return {"valid": True}
-
-
-# Custom Pydantic Validators
-class CustomValidators:
-    @staticmethod
-    def validate_positive_amount(cls, v):
-        """Pydantic validator for positive amounts"""
-        if v <= 0:
-            raise ValueError("Amount must be positive")
-        if v > AppConstants.MAX_EXPENSE_AMOUNT:
-            raise ValueError(f"Amount cannot exceed ${AppConstants.MAX_EXPENSE_AMOUNT}")
-        return round(v, AppConstants.CURRENCY_DECIMAL_PLACES)
-
-    @staticmethod
-    def validate_email_format(cls, v):
-        """Pydantic validator for email"""
-        if v and not ValidationHelpers.validate_email(v):
-            raise ValueError("Invalid email format")
-        return v
-
-    @staticmethod
-    def validate_phone_format(cls, v):
-        """Pydantic validator for phone"""
-        if v and not ValidationHelpers.validate_phone(v):
-            raise ValueError("Invalid phone number format")
-        return v
-
-    @staticmethod
-    def validate_future_date(cls, v):
-        """Pydantic validator for future dates"""
-        if v and v <= datetime.utcnow():
-            raise ValueError("Date must be in the future")
-        return v
-
-    @staticmethod
-    def sanitize_string(cls, v):
-        """Pydantic validator to sanitize strings"""
-        if v:
-            return ValidationHelpers.sanitize_text(v)
-        return v
-
-
-from datetime import timedelta

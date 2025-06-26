@@ -1,30 +1,39 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
-from typing import Dict, Any, Optional
+from typing import Optional
+from pydantic import BaseModel, Field
 from ..database import get_db
 from ..services.communication_service import CommunicationService
 from ..services.household_service import HouseholdService
 from ..schemas.announcement import (
     AnnouncementCreate,
     AnnouncementUpdate,
+    AnnouncementResponse,AnnouncementPin
 )
-from ..schemas.poll import PollCreate, PollUpdate, PollVoteCreate
+from ..schemas.household import HouseholdUpdate
+from ..schemas.poll import (
+    PollCreate,
+    PollUpdate,
+    PollVoteCreate,
+    PollResponse,
+)
+from ..schemas.common import (
+    SuccessResponse,
+    PaginatedResponse,
+    ResponseFactory,
+    PaginationParams,
+    ConfigResponse,
+    ConfigOption,
+)
 from ..dependencies.permissions import require_household_member, require_household_admin
-from ..utils.router_helpers import (
-    handle_service_errors,
-    RouterResponse,
-    validate_pagination,
-)
+from ..utils.router_helpers import handle_service_errors
 from ..models.user import User
-from ..utils.constants import AppConstants
+from ..utils.constants import ResponseMessages
 
 router = APIRouter(tags=["communications"])
 
 
-# ANNOUNCEMENTS
-@router.post(
-    "/announcements", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED
-)
+@router.post("/announcements", response_model=SuccessResponse[AnnouncementResponse])
 @handle_service_errors
 async def create_announcement(
     announcement_data: AnnouncementCreate,
@@ -41,18 +50,17 @@ async def create_announcement(
         created_by=current_user.id,
     )
 
-    return RouterResponse.created(
-        data={"announcement": announcement}, message="Announcement created successfully"
+    return ResponseFactory.created(
+        data=announcement, message=ResponseMessages.ANNOUNCEMENT_CREATED
     )
 
 
-@router.get("/announcements", response_model=Dict[str, Any])
+@router.get("/announcements", response_model=PaginatedResponse[AnnouncementResponse])
 @handle_service_errors
 async def get_announcements(
+    pagination: PaginationParams = Depends(),
     category: Optional[str] = Query(None, description="Filter by category"),
     include_expired: bool = Query(False, description="Include expired announcements"),
-    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
-    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -60,22 +68,34 @@ async def get_announcements(
     current_user, household_id = user_household
     communication_service = CommunicationService(db)
 
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
     result = communication_service.get_household_announcements(
         household_id=household_id,
         user_id=current_user.id,
         category=category,
         include_expired=include_expired,
-        limit=limit,
-        offset=offset,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
 
-    return RouterResponse.success(data=result)
+    # Create pagination info from result
+    from ..schemas.common import PaginationInfo
+
+    announcements = result.get("announcements", [])
+    total_count = result.get("total_count", 0)
+
+    pagination_info = PaginationInfo(
+        current_page=pagination.page,
+        page_size=pagination.page_size,
+        total_items=total_count,
+        total_pages=(total_count + pagination.page_size - 1) // pagination.page_size,
+        has_next=pagination.offset + pagination.page_size < total_count,
+        has_previous=pagination.page > 1,
+    )
+
+    return ResponseFactory.paginated(data=announcements, pagination=pagination_info)
 
 
-@router.get("/announcements/{announcement_id}", response_model=Dict[str, Any])
+@router.get("/announcements/{announcement_id}", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_announcement_details(
     announcement_id: int,
@@ -90,10 +110,13 @@ async def get_announcement_details(
         announcement_id=announcement_id, user_id=current_user.id
     )
 
-    return RouterResponse.success(data=details)
+    return ResponseFactory.success(data=details)
 
 
-@router.put("/announcements/{announcement_id}", response_model=Dict[str, Any])
+@router.put(
+    "/announcements/{announcement_id}",
+    response_model=SuccessResponse[AnnouncementResponse],
+)
 @handle_service_errors
 async def update_announcement(
     announcement_id: int,
@@ -111,8 +134,8 @@ async def update_announcement(
         updated_by=current_user.id,
     )
 
-    return RouterResponse.updated(
-        data={"announcement": announcement}, message="Announcement updated successfully"
+    return ResponseFactory.success(
+        data=announcement, message=ResponseMessages.ANNOUNCEMENT_UPDATED
     )
 
 
@@ -134,11 +157,13 @@ async def delete_announcement(
     )
 
 
-@router.put("/announcements/{announcement_id}/pin", response_model=Dict[str, Any])
+@router.put(
+    "/announcements/{announcement_id}/pin", response_model=SuccessResponse[dict]
+)
 @handle_service_errors
 async def toggle_announcement_pin(
     announcement_id: int,
-    pin_data: Dict[str, bool] = Body(..., example={"pinned": True}),
+    pin_data: AnnouncementPin,
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_admin),  # Admin only
 ):
@@ -146,10 +171,8 @@ async def toggle_announcement_pin(
     current_user, household_id = user_household
     communication_service = CommunicationService(db)
 
-    pinned = pin_data.get("pinned", True)
-
     success = communication_service.pin_announcement(
-        announcement_id=announcement_id, user_id=current_user.id, pinned=pinned
+        announcement_id=announcement_id, user_id=current_user.id, pinned=pin_data.pinned
     )
 
     if not success:
@@ -157,14 +180,19 @@ async def toggle_announcement_pin(
             status_code=status.HTTP_404_NOT_FOUND, detail="Announcement not found"
         )
 
-    action = "pinned" if pinned else "unpinned"
-    return RouterResponse.success(message=f"Announcement {action} successfully")
+    action = "pinned" if pin_data.pinned else "unpinned"
+    return ResponseFactory.success(
+        data={"announcement_id": announcement_id, "pinned": pin_data.pinned},
+        message=f"Announcement {action} successfully",
+    )
 
 
-# POLLS
-@router.post(
-    "/polls", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED
-)
+# =============================================================================
+# POLL ENDPOINTS
+# =============================================================================
+
+
+@router.post("/polls", response_model=SuccessResponse[PollResponse])
 @handle_service_errors
 async def create_poll(
     poll_data: PollCreate,
@@ -181,17 +209,14 @@ async def create_poll(
         created_by=current_user.id,
     )
 
-    return RouterResponse.created(
-        data={"poll": poll}, message="Poll created successfully"
-    )
+    return ResponseFactory.created(data=poll, message=ResponseMessages.POLL_CREATED)
 
 
-@router.get("/polls", response_model=Dict[str, Any])
+@router.get("/polls", response_model=PaginatedResponse[PollResponse])
 @handle_service_errors
 async def get_polls(
+    pagination: PaginationParams = Depends(),
     active_only: bool = Query(True, description="Show only active polls"),
-    limit: int = Query(AppConstants.DEFAULT_PAGE_SIZE, le=AppConstants.MAX_PAGE_SIZE),
-    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_member),
 ):
@@ -199,21 +224,33 @@ async def get_polls(
     current_user, household_id = user_household
     communication_service = CommunicationService(db)
 
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
     result = communication_service.get_household_polls(
         household_id=household_id,
         user_id=current_user.id,
         active_only=active_only,
-        limit=limit,
-        offset=offset,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
 
-    return RouterResponse.success(data=result)
+    # Create pagination info from result
+    from ..schemas.common import PaginationInfo
+
+    polls = result.get("polls", [])
+    total_count = result.get("total_count", 0)
+
+    pagination_info = PaginationInfo(
+        current_page=pagination.page,
+        page_size=pagination.page_size,
+        total_items=total_count,
+        total_pages=(total_count + pagination.page_size - 1) // pagination.page_size,
+        has_next=pagination.offset + pagination.page_size < total_count,
+        has_previous=pagination.page > 1,
+    )
+
+    return ResponseFactory.paginated(data=polls, pagination=pagination_info)
 
 
-@router.get("/polls/{poll_id}", response_model=Dict[str, Any])
+@router.get("/polls/{poll_id}", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_poll_details(
     poll_id: int,
@@ -228,10 +265,10 @@ async def get_poll_details(
         poll_id=poll_id, user_id=current_user.id
     )
 
-    return RouterResponse.success(data=details)
+    return ResponseFactory.success(data=details)
 
 
-@router.put("/polls/{poll_id}", response_model=Dict[str, Any])
+@router.put("/polls/{poll_id}", response_model=SuccessResponse[PollResponse])
 @handle_service_errors
 async def update_poll(
     poll_id: int,
@@ -249,9 +286,7 @@ async def update_poll(
         updated_by=current_user.id,
     )
 
-    return RouterResponse.updated(
-        data={"poll": poll}, message="Poll updated successfully"
-    )
+    return ResponseFactory.success(data=poll, message=ResponseMessages.POLL_UPDATED)
 
 
 @router.delete("/polls/{poll_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -268,7 +303,7 @@ async def delete_poll(
     communication_service.delete_poll(poll_id=poll_id, deleted_by=current_user.id)
 
 
-@router.post("/polls/{poll_id}/vote", response_model=Dict[str, Any])
+@router.post("/polls/{poll_id}/vote", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def vote_on_poll(
     poll_id: int,
@@ -284,10 +319,10 @@ async def vote_on_poll(
         poll_id=poll_id, user_id=current_user.id, vote_data=vote_data
     )
 
-    return RouterResponse.success(data=result, message="Vote recorded successfully")
+    return ResponseFactory.success(data=result, message=ResponseMessages.VOTE_RECORDED)
 
 
-@router.put("/polls/{poll_id}/close", response_model=Dict[str, Any])
+@router.put("/polls/{poll_id}/close", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def close_poll(
     poll_id: int,
@@ -307,11 +342,17 @@ async def close_poll(
             status_code=status.HTTP_404_NOT_FOUND, detail="Poll not found"
         )
 
-    return RouterResponse.success(message="Poll closed successfully")
+    return ResponseFactory.success(
+        data={"poll_id": poll_id, "closed": True}, message="Poll closed successfully"
+    )
 
 
-# HOUSE RULES
-@router.get("/house-rules", response_model=Dict[str, Any])
+# =============================================================================
+# HOUSE RULES ENDPOINTS
+# =============================================================================
+
+
+@router.get("/house-rules", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_house_rules(
     db: Session = Depends(get_db),
@@ -323,7 +364,7 @@ async def get_house_rules(
 
     household = household_service.get_household_details(household_id)
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "house_rules": household.get("house_rules", ""),
             "last_updated": household.get("updated_at"),
@@ -331,29 +372,17 @@ async def get_house_rules(
     )
 
 
-@router.put("/house-rules", response_model=Dict[str, Any])
+@router.put("/house-rules", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def update_house_rules(
-    rules_data: Dict[str, str] = Body(
-        ..., example={"house_rules": "New house rules text"}
-    ),
+    rules_data: HouseholdUpdate,
     db: Session = Depends(get_db),
     user_household: tuple[User, int] = Depends(require_household_admin),  # Admin only
 ):
     """Update house rules (admin only)"""
     current_user, household_id = user_household
     household_service = HouseholdService(db)
-
-    house_rules = rules_data.get("house_rules")
-    if not house_rules:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="house_rules field is required",
-        )
-
-    from ..schemas.household import HouseholdUpdate
-
-    update_data = HouseholdUpdate(house_rules=house_rules)
+    update_data = HouseholdUpdate(house_rules=rules_data.house_rules)
 
     household = household_service.update_household_settings(
         household_id=household_id,
@@ -361,14 +390,18 @@ async def update_house_rules(
         updated_by=current_user.id,
     )
 
-    return RouterResponse.updated(
+    return ResponseFactory.success(
         data={"house_rules": household.house_rules},
-        message="House rules updated successfully",
+        message=ResponseMessages.HOUSEHOLD_UPDATED,
     )
 
 
+# =============================================================================
 # SUMMARY ENDPOINTS
-@router.get("/summary", response_model=Dict[str, Any])
+# =============================================================================
+
+
+@router.get("/summary", response_model=SuccessResponse[dict])
 @handle_service_errors
 async def get_communication_summary(
     db: Session = Depends(get_db),
@@ -386,7 +419,7 @@ async def get_communication_summary(
         household_id=household_id, user_id=current_user.id
     )
 
-    return RouterResponse.success(
+    return ResponseFactory.success(
         data={
             "user_activity": user_summary,
             "household_activity": household_summary,
@@ -394,29 +427,79 @@ async def get_communication_summary(
     )
 
 
-@router.get("/config/categories", response_model=Dict[str, Any])
+# =============================================================================
+# CONFIGURATION ENDPOINTS
+# =============================================================================
+
+
+@router.get("/config/categories", response_model=SuccessResponse[ConfigResponse])
 async def get_announcement_categories():
     """Get available announcement categories"""
-    categories = [
-        {"value": "general", "label": "General"},
-        {"value": "maintenance", "label": "Maintenance"},
-        {"value": "event", "label": "Event"},
-        {"value": "rule", "label": "Rule Change"},
-        {"value": "financial", "label": "Financial"},
-        {"value": "urgent", "label": "Urgent"},
+    categories_data = [
+        {
+            "value": "general",
+            "label": "General",
+            "description": "General household announcements",
+        },
+        {
+            "value": "maintenance",
+            "label": "Maintenance",
+            "description": "Maintenance and repairs",
+        },
+        {
+            "value": "event",
+            "label": "Event",
+            "description": "Upcoming events and activities",
+        },
+        {
+            "value": "rule",
+            "label": "Rule Change",
+            "description": "Changes to house rules",
+        },
+        {
+            "value": "financial",
+            "label": "Financial",
+            "description": "Financial matters and bills",
+        },
+        {
+            "value": "urgent",
+            "label": "Urgent",
+            "description": "Urgent announcements requiring immediate attention",
+        },
     ]
 
-    return RouterResponse.success(data={"categories": categories})
+    options = [
+        ConfigOption(
+            value=cat["value"], label=cat["label"], description=cat["description"]
+        )
+        for cat in categories_data
+    ]
+
+    return ResponseFactory.success(
+        data=ConfigResponse(
+            options=options,
+            total_count=len(options),
+            category="Announcement Categories",
+        )
+    )
 
 
-@router.get("/config/priorities", response_model=Dict[str, Any])
+@router.get("/config/priorities", response_model=SuccessResponse[ConfigResponse])
 async def get_priority_levels():
     """Get available priority levels"""
-    from ..utils.constants import Priority
+    from ..models.enums import Priority
 
-    priorities = [
-        {"value": priority.value, "label": priority.value.title()}
+    options = [
+        ConfigOption(
+            value=priority.value,
+            label=priority.value.title(),
+            description=f"Priority level: {priority.value}",
+        )
         for priority in Priority
     ]
 
-    return RouterResponse.success(data={"priorities": priorities})
+    return ResponseFactory.success(
+        data=ConfigResponse(
+            options=options, total_count=len(options), category="Priority Levels"
+        )
+    )

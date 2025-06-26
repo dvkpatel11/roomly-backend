@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator, Field
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 from app.models.enums import TaskStatus
@@ -73,3 +73,23 @@ class TaskLeaderboard(BaseModel):
     tasks_completed: int
     completion_rate: float
     current_streak: int
+
+
+class TaskStatistics(BaseModel):
+    household_id: int
+    period_months: int
+    total_members: int
+    total_completed_tasks: int
+    average_completion_rate: float
+    overdue_tasks_count: int
+    leaderboard_preview: List[dict]
+    most_productive_member: Optional[dict]
+
+
+class TaskStatusUpdate(BaseModel):
+    status: str = Field(..., description="New task status")
+
+
+class TaskReassignment(BaseModel):
+    new_assignee_id: int = Field(..., gt=0)
+    reason: Optional[str] = Field(None, max_length=200)

@@ -9,7 +9,7 @@ from ..models.expense import Expense
 from ..models.task import Task
 from ..models.event import Event
 from ..models.household_membership import HouseholdMembership
-from ..schemas.household import HouseholdCreate, HouseholdUpdate
+from ..schemas.household import HouseholdCreate, HouseholdSettings, HouseholdUpdate
 from ..utils.service_helpers import ServiceHelpers
 
 
@@ -515,24 +515,7 @@ class HouseholdService:
 
     def _get_default_household_settings(self) -> Dict[str, Any]:
         """Get default household settings"""
-        return {
-            "guest_policy": {
-                "max_overnight_guests": 2,
-                "max_consecutive_nights": 3,
-                "approval_required": True,
-                "quiet_hours_start": "22:00",
-                "quiet_hours_end": "08:00",
-            },
-            "notification_settings": {
-                "bill_reminder_days": 3,
-                "task_overdue_hours": 24,
-                "event_reminder_hours": 24,
-            },
-            "task_settings": {
-                "rotation_enabled": True,
-                "photo_proof_required": False,
-            },
-        }
+        return HouseholdSettings()
 
     def _enforce_single_household(self) -> bool:
         """Business rule: enforce single household per user"""
