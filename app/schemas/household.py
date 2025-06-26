@@ -60,26 +60,7 @@ class HouseholdResponse(HouseholdBase):
         from_attributes = True
 
 
-class HouseholdStats(BaseModel):
-    total_expenses: float
-    total_bills: float
-    active_tasks: int
-    completed_tasks: int
-    upcoming_events: int
-    active_members: int
-    household_health_score: int
-
-
 class HouseholdInvitation(BaseModel):
     email: str = Field(..., pattern=r"^[^@]+@[^@]+\.[^@]+$")
     role: str = "member"
     personal_message: Optional[str] = Field(None, max_length=300)
-
-
-class HouseholdSummary(BaseModel):
-    id: int
-    name: str
-    member_count: int
-    address: Optional[str]
-    user_role: str
-    joined_at: datetime

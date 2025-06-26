@@ -39,24 +39,6 @@ class EventUpdate(BaseModel):
     status: Optional[EventStatus] = None
 
 
-class EventResponse(EventBase):
-    id: int
-    household_id: int
-    created_by: int
-    creator_name: str
-    start_date: datetime
-    end_date: Optional[datetime]
-    status: EventStatus
-    attendee_count: int
-    rsvp_yes: int
-    rsvp_no: int
-    rsvp_maybe: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class EventSummary(BaseModel):
     id: int
     title: str

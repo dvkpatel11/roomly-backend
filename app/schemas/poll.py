@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator, Field
-from typing import Any, Optional, List, Dict
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -59,22 +59,3 @@ class PollResponse(PollBase):
 
     class Config:
         from_attributes = True
-
-
-class PollResults(BaseModel):
-    poll_id: int
-    question: str
-    total_votes: int
-    is_closed: bool
-    results: List[
-        Dict[str, Any]
-    ]  # [{"option": "text", "votes": 5, "percentage": 50.0}]
-
-
-class PollSummary(BaseModel):
-    id: int
-    question: str
-    total_votes: int
-    is_active: bool
-    closes_at: Optional[datetime]
-    created_at: datetime

@@ -1,11 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr
+from pydantic import EmailStr
 from ..database import get_db, get_supabase
 from ..models.user import User
 from ..services.household_service import HouseholdService
 from ..schemas.user import UserResponse
+from ..schemas.auth import (
+    RegisterRequest,
+    LoginRequest,
+    LoginResponse,
+    ChangePasswordRequest,
+)
 from ..utils.router_helpers import handle_service_errors, RouterResponse
 from supabase import Client
 from ..dependencies.permissions import require_household_member
@@ -14,31 +20,6 @@ import logging
 router = APIRouter(tags=["authentication"])
 security = HTTPBearer()
 logger = logging.getLogger(__name__)
-
-
-# Request/Response Models
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    phone: str = None
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    user: dict
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
 
 
 # Auth Endpoints
@@ -245,7 +226,6 @@ async def change_password(
 ):
     """Change user password"""
 
-    # Validate new password
     if len(password_data.new_password) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -253,7 +233,6 @@ async def change_password(
         )
 
     try:
-        # Update password in Supabase
         supabase.auth.update_user({"password": password_data.new_password})
 
         return RouterResponse.success(message="Password updated successfully")

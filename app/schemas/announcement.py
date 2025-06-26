@@ -8,7 +8,7 @@ class AnnouncementBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=2000)
     category: AnnouncementCategory
-    priority: str = Priority.NORMAL.value
+    priority: Priority
     is_pinned: bool = False
     expires_at: Optional[datetime] = None
 
@@ -42,17 +42,5 @@ class AnnouncementResponse(AnnouncementBase):
         from_attributes = True
 
 
-class AnnouncementSummary(BaseModel):
-    id: int
-    title: str
-    category: AnnouncementCategory
-    priority: Priority
-    is_pinned: bool
-    created_at: datetime
-    author_name: str
-
-
 class AnnouncementPin(BaseModel):
     pinned: bool = Field(..., description="Whether to pin or unpin the announcement")
-
-

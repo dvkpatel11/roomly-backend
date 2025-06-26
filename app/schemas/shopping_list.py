@@ -80,14 +80,3 @@ class ShoppingListResponse(ShoppingListBase):
 
     class Config:
         from_attributes = True
-
-
-class ShoppingListSummary(BaseModel):
-    id: int
-    name: str
-    items_count: int
-    purchased_items_count: int
-    total_estimated_cost: Optional[float]
-    assigned_shopper: Optional[str]
-    planned_date: Optional[datetime]
-    is_active: bool

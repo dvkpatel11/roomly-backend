@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
-from pydantic import BaseModel, Field
 from ..database import get_db
 from ..services.communication_service import CommunicationService
 from ..services.household_service import HouseholdService

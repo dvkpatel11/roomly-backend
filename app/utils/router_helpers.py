@@ -41,7 +41,6 @@ def handle_service_errors(func: Callable) -> Callable:
             logger.warning(f"Permission denied: {str(e)}")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
-        # Not Found Errors -> 404 Not Found
         except (
             TaskNotFoundError,
             ExpenseNotFoundError,

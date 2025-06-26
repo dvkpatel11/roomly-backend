@@ -12,12 +12,6 @@ class NotificationBase(BaseModel):
     action_url: Optional[str] = None
 
 
-class NotificationCreate(NotificationBase):
-    user_id: int
-    related_entity_type: Optional[str] = None
-    related_entity_id: Optional[int] = None
-
-
 class NotificationResponse(NotificationBase):
     id: int
     user_id: int

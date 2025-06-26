@@ -50,11 +50,3 @@ class ExpenseSplit(BaseModel):
     amount_owed: float
     is_paid: bool = False
     payment_date: Optional[datetime] = None
-
-
-class ExpenseSplitCalculation(BaseModel):
-    expense_id: int
-    total_amount: float
-    split_method: SplitMethod
-    splits: list[ExpenseSplit]
-    calculation_details: Dict[str, Any]

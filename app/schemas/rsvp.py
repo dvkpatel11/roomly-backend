@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 from ..models.enums import RSVPStatus
 
@@ -33,20 +33,3 @@ class RSVPResponse(RSVPBase):
 
     class Config:
         from_attributes = True
-
-
-class EventRSVPSummary(BaseModel):
-    event_id: int
-    event_title: str
-    total_responses: int
-    yes_count: int
-    no_count: int
-    maybe_count: int
-    total_guests: int
-    responses: List[RSVPResponse]
-
-
-class UserRSVPSummary(BaseModel):
-    user_id: int
-    upcoming_events: List[RSVPResponse]
-    past_events_count: int

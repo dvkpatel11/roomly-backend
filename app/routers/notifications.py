@@ -314,9 +314,7 @@ async def trigger_all_reminders_endpoint(
 async def get_scheduler_status():
     """Get background task scheduler status"""
     try:
-        import schedule
-
-        scheduled_jobs_count = len(schedule.jobs)
+        scheduled_jobs_count = len(scheduler.jobs)
     except ImportError:
         scheduled_jobs_count = 0
 

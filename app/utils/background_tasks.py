@@ -60,7 +60,6 @@ class BackgroundTaskScheduler:
         self._run_notification_checks()
 
 
-# Global scheduler instance
 scheduler = BackgroundTaskScheduler()
 
 
