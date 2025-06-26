@@ -1,7 +1,7 @@
 from pydantic import BaseModel, validator, Field
 from typing import Optional, List
 from datetime import datetime
-
+from .common import SuccessResponse, PaginatedResponse
 
 class PollBase(BaseModel):
     question: str = Field(..., min_length=1, max_length=200)
@@ -59,3 +59,6 @@ class PollResponse(PollBase):
 
     class Config:
         from_attributes = True
+
+PollListResponse = PaginatedResponse[PollResponse] 
+PollDetailResponse = SuccessResponse[PollResponse]

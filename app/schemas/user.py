@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
 from ..utils.validation import ValidationHelpers
+from .common import SuccessResponse, PaginatedResponse
 
 
 class UserBase(BaseModel):
@@ -85,4 +86,9 @@ class AuthUser(BaseModel):
     avatar_url: Optional[str] = None
     email_verified: bool
     active_household_id: Optional[int] = None
-    permissions: list[str] = []  # ["household:admin", "task:create", etc.]
+    permissions: list[str] = []
+
+
+UserDetailResponse = SuccessResponse[UserResponse]
+UserListResponse = PaginatedResponse[UserResponse]
+AuthUserResponse = SuccessResponse[AuthUser]

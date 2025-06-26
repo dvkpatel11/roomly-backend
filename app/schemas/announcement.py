@@ -2,7 +2,7 @@ from pydantic import BaseModel, validator, Field
 from typing import Optional
 from datetime import datetime
 from ..models.enums import AnnouncementType as AnnouncementCategory, Priority
-
+from .common import SuccessResponse, PaginatedResponse
 
 class AnnouncementBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -44,3 +44,6 @@ class AnnouncementResponse(AnnouncementBase):
 
 class AnnouncementPin(BaseModel):
     pinned: bool = Field(..., description="Whether to pin or unpin the announcement")
+
+AnnouncementListResponse = PaginatedResponse[AnnouncementResponse]
+AnnouncementDetailResponse = SuccessResponse[AnnouncementResponse]

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from ..models.enums import RSVPStatus
+from .common import SuccessResponse, PaginatedResponse
 
 
 class RSVPBase(BaseModel):
@@ -33,3 +34,7 @@ class RSVPResponse(RSVPBase):
 
     class Config:
         from_attributes = True
+
+
+RSVPDetailResponse = SuccessResponse[RSVPResponse]
+RSVPListResponse = PaginatedResponse[RSVPResponse]

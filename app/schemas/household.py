@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.models.enums import HouseholdRole
+from .common import SuccessResponse
 
 
 class HouseholdBase(BaseModel):
@@ -64,3 +65,7 @@ class HouseholdInvitation(BaseModel):
     email: str = Field(..., pattern=r"^[^@]+@[^@]+\.[^@]+$")
     role: str = "member"
     personal_message: Optional[str] = Field(None, max_length=300)
+
+
+HouseholdDetailResponse = SuccessResponse[HouseholdResponse]
+HouseholdMemberListResponse = SuccessResponse[List[HouseholdMember]]

@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from ..models.enums import GuestRelationship
-
+from .common import SuccessResponse, PaginatedResponse
 
 class GuestBase(BaseModel):
     name: str
@@ -31,3 +31,6 @@ class GuestResponse(GuestBase):
 
     class Config:
         from_attributes = True
+
+GuestDetailResponse = SuccessResponse[GuestResponse]
+GuestListResponse = PaginatedResponse[GuestResponse]

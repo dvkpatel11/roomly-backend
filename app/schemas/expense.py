@@ -2,7 +2,7 @@ from pydantic import BaseModel, validator, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
 from ..models.enums import ExpenseCategory, SplitMethod
-
+from .common import SuccessResponse, PaginatedResponse
 
 class ExpenseBase(BaseModel):
     description: str = Field(..., min_length=1, max_length=200)
@@ -50,3 +50,6 @@ class ExpenseSplit(BaseModel):
     amount_owed: float
     is_paid: bool = False
     payment_date: Optional[datetime] = None
+
+ExpenseListResponse = PaginatedResponse[ExpenseResponse]
+ExpenseDetailResponse = SuccessResponse[ExpenseResponse]

@@ -1,16 +1,10 @@
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Optional
-
-from annotated_types import T
 from ..utils.constants import AppConstants, ResponseMessages
 from pydantic import BaseModel, Field
+from typing import TypeVar
 
-
-class PaginationParams(BaseModel):
-    limit: int = Field(
-        AppConstants.DEFAULT_PAGE_SIZE, ge=1, le=AppConstants.MAX_PAGE_SIZE
-    )
-    offset: int = Field(0, ge=0)
+T = TypeVar("T")
 
 
 class BaseResponse(BaseModel, Generic[T]):

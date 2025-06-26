@@ -1,9 +1,9 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field, computed_field
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, date
 from ..models.enums import ExpenseCategory, SplitMethod
 from ..utils.validation import ValidationHelpers
-from pydantic import Field
+from .common import SuccessResponse, PaginatedResponse
 
 
 class BillBase(BaseModel):
@@ -55,6 +55,48 @@ class BillResponse(BillBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
+    # COMPUTED FIELDS
+    @computed_field
+    @property
+    def days_until_due(self) -> int:
+        """Days until next due date"""
+        today = date.today()
+        current_month_due = date(today.year, today.month, min(self.due_day, 28))
+
+        if current_month_due >= today:
+            delta = current_month_due - today
+            return delta.days
+        else:
+            # Next month
+            if today.month == 12:
+                next_due = date(today.year + 1, 1, min(self.due_day, 28))
+            else:
+                next_due = date(today.year, today.month + 1, min(self.due_day, 28))
+            delta = next_due - today
+            return delta.days
+
+    @computed_field
+    @property
+    def is_due_soon(self) -> bool:
+        """Check if bill is due within 3 days"""
+        return self.days_until_due <= 3
+
+    @computed_field
+    @property
+    def next_due_date(self) -> date:
+        """Calculate next due date"""
+        today = date.today()
+        current_month_due = date(today.year, today.month, min(self.due_day, 28))
+
+        if current_month_due >= today:
+            return current_month_due
+        else:
+            # Next month
+            if today.month == 12:
+                return date(today.year + 1, 1, min(self.due_day, 28))
+            else:
+                return date(today.year, today.month + 1, min(self.due_day, 28))
+
     class Config:
         from_attributes = True
 
@@ -68,3 +110,8 @@ class BillPaymentRecord(BaseModel):
     for_month: str = Field(
         ..., description="Month this payment is for (YYYY-MM format)"
     )
+
+
+# Wrapped response types
+BillListResponse = PaginatedResponse[BillResponse]
+BillDetailResponse = SuccessResponse[BillResponse]
