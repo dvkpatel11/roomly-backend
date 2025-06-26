@@ -11,7 +11,6 @@ security = HTTPBearer()
 logger = logging.getLogger(__name__)
 
 
-# Auth Helper Functions
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
@@ -23,29 +22,19 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
     try:
-        # Verify token with Supabase
         auth_response = supabase.auth.get_user(credentials.credentials)
-
         if not auth_response.user:
             raise credentials_exception
-
         supabase_user = auth_response.user
-
-        # Find user in our database by Supabase ID
         user = (
             db.query(User)
             .filter(User.supabase_id == supabase_user.id, User.is_active == True)
             .first()
         )
-
-        # If user doesn't exist in our DB, create them
         if not user:
             user = User.create_from_supabase(supabase_user, db)
-
         return user
-
     except Exception as e:
         logger.error(f"Authentication error: {e}")
         raise credentials_exception
@@ -58,13 +47,11 @@ async def require_household_member(
     try:
         household_service = HouseholdService(db)
         household_info = household_service.get_user_household_info(current_user.id)
-
         if not household_info:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User must be a member of a household",
             )
-
         return current_user, household_info["household_id"]
     except HouseholdServiceError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -80,17 +67,16 @@ async def require_household_admin(
 ) -> tuple[User, int]:
     """Ensure user is a household admin and return user + household_id"""
     try:
-        # First check if user is a household member
-        current_user, household_id = await require_household_member(current_user, db)
-
-        # Then check admin permissions
         household_service = HouseholdService(db)
+        household_info = household_service.get_user_household_info(current_user.id)
+        if not household_info:
+            raise HTTPException(...)
+        household_id = household_info["household_id"]
         if not household_service.check_admin_permissions(current_user.id, household_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Admin permissions required",
             )
-
         return current_user, household_id
     except HTTPException:
         raise

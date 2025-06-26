@@ -83,11 +83,16 @@ def calculate_splits(
     }
 
 
+def round_currency(amount: float) -> float:
+    """Round to 2 decimal places using proper currency rounding"""
+    return float(Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 def _calculate_equal_splits(
-    self, total_amount: float, household_members: List[HouseholdMember]
+    total_amount: float, household_members: List[HouseholdMember]
 ) -> List[Dict[str, Any]]:
     """Equal split among all members"""
-    per_person = self._round_currency(total_amount / len(household_members))
+    per_person = round_currency(total_amount / len(household_members))
 
     splits = []
     for member in household_members:
@@ -105,7 +110,6 @@ def _calculate_equal_splits(
 
 
 def _calculate_custom_splits(
-    self,
     total_amount: float,
     household_members: List[HouseholdMember],
     custom_splits: Dict[int, Union[float, str]],
@@ -123,7 +127,7 @@ def _calculate_custom_splits(
             if amount < 0:
                 raise Exception(f"Negative amount not allowed for {member.name}")
 
-            amount = self._round_currency(amount)
+            amount = round_currency(amount)
             specified_members.add(member.id)
 
             splits.append(
@@ -144,7 +148,7 @@ def _calculate_custom_splits(
     ]
 
     if unspecified_members and remaining_amount > 0:
-        per_person = self._round_currency(remaining_amount / len(unspecified_members))
+        per_person = round_currency(remaining_amount / len(unspecified_members))
 
         for member in unspecified_members:
             splits.append(
@@ -163,7 +167,6 @@ def _calculate_custom_splits(
 
 
 def _calculate_percentage_splits(
-    self,
     total_amount: float,
     household_members: List[HouseholdMember],
     custom_splits: Dict[int, Union[float, str]],
@@ -181,7 +184,7 @@ def _calculate_percentage_splits(
             if percentage < 0 or percentage > 100:
                 raise Exception(f"Percentage must be between 0-100% for {member.name}")
 
-            amount = self._round_currency(total_amount * (percentage / 100))
+            amount = round_currency(total_amount * (percentage / 100))
             total_percentage += percentage
             specified_members.add(member.id)
 
@@ -209,9 +212,7 @@ def _calculate_percentage_splits(
             per_person_percentage = remaining_percentage / len(unspecified_members)
 
             for member in unspecified_members:
-                amount = self._round_currency(
-                    total_amount * (per_person_percentage / 100)
-                )
+                amount = round_currency(total_amount * (per_person_percentage / 100))
 
                 splits.append(
                     {
@@ -227,12 +228,12 @@ def _calculate_percentage_splits(
 
 
 def _adjust_for_rounding(
-    self, splits: List[Dict[str, Any]], target_total: float
+    splits: List[Dict[str, Any]], target_total: float
 ) -> List[Dict[str, Any]]:
     """Adjust splits to ensure total equals target amount exactly"""
 
     current_total = sum(split["amount_owed"] for split in splits)
-    difference = self._round_currency(target_total - current_total)
+    difference = round_currency(target_total - current_total)
 
     if abs(difference) > 0.01:  # Significant difference
         raise Exception(f"Split calculation error: total mismatch of ${difference:.2f}")
@@ -240,7 +241,7 @@ def _adjust_for_rounding(
     if difference != 0 and splits:
         # Add difference to the largest split (most fair)
         largest_split = max(splits, key=lambda s: s["amount_owed"])
-        largest_split["amount_owed"] = self._round_currency(
+        largest_split["amount_owed"] = round_currency(
             largest_split["amount_owed"] + difference
         )
         if abs(difference) > 0.005:  # Only note significant adjustments

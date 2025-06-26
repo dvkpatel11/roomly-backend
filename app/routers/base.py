@@ -1,9 +1,8 @@
-from typing import TypeVar, Generic, Type, List, Optional, Dict, Any, Callable
+from typing import TypeVar, Type, List, Dict, Any, Callable
 from abc import ABC, abstractmethod
-from fastapi import APIRouter, Depends, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, status, Query, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-
 from ..database import get_db
 from ..dependencies import require_household_member, require_household_admin
 from ..schemas.common import (
@@ -11,383 +10,339 @@ from ..schemas.common import (
     PaginatedResponse,
     ResponseFactory,
     PaginationParams,
-    ConfigResponse,
-    ConfigOption,
 )
 from ..models.user import User
-from ..utils.constants import ResponseMessages
-from ..utils.router_helpers import handle_service_errors
 
-# Type variables for generic patterns
-CreateSchemaT = TypeVar("CreateSchemaT", bound=BaseModel)
-UpdateSchemaT = TypeVar("UpdateSchemaT", bound=BaseModel)
-ResponseSchemaT = TypeVar("ResponseSchemaT", bound=BaseModel)
-ServiceT = TypeVar("ServiceT")
+T = TypeVar("T", bound=BaseModel)
+CreateT = TypeVar("CreateT", bound=BaseModel)
+UpdateT = TypeVar("UpdateT", bound=BaseModel)
+ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
 
-class BaseRouterV2(ABC):
-    """Abstract base class for all V2 routers"""
-
-    def __init__(self, prefix: str, tags: List[str]):
-        self.router = APIRouter(prefix=prefix, tags=tags)
-        self._register_endpoints()
+class BaseService(ABC):
+    """Abstract base service interface"""
 
     @abstractmethod
-    def _register_endpoints(self):
-        """Register all endpoints for this router"""
+    def get_by_id(self, household_id: int, entity_id: int) -> Any:
+        pass
+
+    @abstractmethod
+    def get_all(self, household_id: int, **filters) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def create(self, household_id: int, user_id: int, data: BaseModel) -> Any:
+        pass
+
+    @abstractmethod
+    def update(
+        self, household_id: int, entity_id: int, data: BaseModel, user_id: int
+    ) -> Any:
+        pass
+
+    @abstractmethod
+    def delete(self, household_id: int, entity_id: int, user_id: int) -> None:
         pass
 
 
-class HouseholdCRUDRouter(
-    BaseRouterV2, Generic[CreateSchemaT, UpdateSchemaT, ResponseSchemaT, ServiceT]
-):
-    """
-    Generic CRUD router for household-scoped entities
-    Eliminates 90% of repetitive router code
-    """
+class CRUDRouterBuilder:
+    """Builder pattern for creating CRUD routers - fixes typing issues"""
 
-    def __init__(
-        self,
-        entity_name: str,
-        service_class: Type[ServiceT],
-        create_schema: Type[CreateSchemaT],
-        update_schema: Type[UpdateSchemaT],
-        response_schema: Type[ResponseSchemaT],
-        prefix: str = None,
-        tags: List[str] = None,
-        # Customization options
-        require_admin_for_create: bool = False,
-        require_admin_for_update: bool = False,
-        require_admin_for_delete: bool = False,
-        enable_pagination: bool = True,
-        enable_filtering: bool = True,
-        custom_endpoints: List[Callable] = None,
-    ):
+    def __init__(self, entity_name: str):
         self.entity_name = entity_name
         self.entity_name_lower = entity_name.lower()
-        self.service_class = service_class
-        self.create_schema = create_schema
-        self.update_schema = update_schema
-        self.response_schema = response_schema
+        self.router = APIRouter()
+        self.require_admin_create = False
+        self.require_admin_update = False
+        self.require_admin_delete = False
+        self.enable_pagination = True
 
-        # Permission settings
-        self.require_admin_for_create = require_admin_for_create
-        self.require_admin_for_update = require_admin_for_update
-        self.require_admin_for_delete = require_admin_for_delete
+    def with_admin_permissions(self, create=False, update=False, delete=False):
+        """Configure admin requirements"""
+        self.require_admin_create = create
+        self.require_admin_update = update
+        self.require_admin_delete = delete
+        return self
 
-        # Feature flags
-        self.enable_pagination = enable_pagination
-        self.enable_filtering = enable_filtering
+    def with_pagination(self, enabled=True):
+        """Configure pagination"""
+        self.enable_pagination = enabled
+        return self
 
-        # Custom endpoints to register
-        self.custom_endpoints = custom_endpoints or []
-
-        super().__init__(
-            prefix=prefix or f"/{self.entity_name_lower}s",
-            tags=tags or [self.entity_name_lower],
-        )
-
-    def _get_create_dependency(self):
-        """Get appropriate dependency for create operations"""
-        return (
+    def build_router(
+        self,
+        service_factory: Callable[[Session], BaseService],
+        create_schema: Type[CreateT],
+        update_schema: Type[UpdateT],
+        response_schema: Type[ResponseT],
+    ) -> APIRouter:
+        """Build the complete CRUD router"""
+        create_dep = (
             require_household_admin
-            if self.require_admin_for_create
+            if self.require_admin_create
             else require_household_member
         )
-
-    def _get_update_dependency(self):
-        """Get appropriate dependency for update operations"""
-        return (
+        update_dep = (
             require_household_admin
-            if self.require_admin_for_update
+            if self.require_admin_update
             else require_household_member
         )
-
-    def _get_delete_dependency(self):
-        """Get appropriate dependency for delete operations"""
-        return (
+        delete_dep = (
             require_household_admin
-            if self.require_admin_for_delete
+            if self.require_admin_delete
             else require_household_member
         )
-
-    def _register_endpoints(self):
-        """Register all standard CRUD endpoints"""
-        self._register_list_endpoint()
-        self._register_get_endpoint()
-        self._register_create_endpoint()
-        self._register_update_endpoint()
-        self._register_delete_endpoint()
-
-        # Register custom endpoints
-        for endpoint_func in self.custom_endpoints:
-            endpoint_func(self.router)
-
-    def _register_list_endpoint(self):
-        """Register GET / endpoint with pagination and filtering"""
-
-        if self.enable_pagination:
-            response_model = PaginatedResponse[self.response_schema]
-        else:
-            response_model = SuccessResponse[List[self.response_schema]]
 
         @self.router.get(
             "",
-            response_model=response_model,
+            response_model=(
+                PaginatedResponse[response_schema]
+                if self.enable_pagination
+                else SuccessResponse[List[response_schema]]
+            ),
             summary=f"List {self.entity_name}s",
-            description=f"Get all {self.entity_name_lower}s for the household with optional filtering",
         )
-        @handle_service_errors
-        async def list_entities(
+        def list_entities(
             pagination: PaginationParams = (
                 Depends() if self.enable_pagination else None
             ),
-            # Common filter parameters
-            active_only: bool = Query(True, description="Show only active items"),
-            created_by: Optional[int] = Query(None, description="Filter by creator"),
-            # Dependencies
+            active_only: bool = Query(True),
             user_household: tuple[User, int] = Depends(require_household_member),
             db: Session = Depends(get_db),
         ):
             current_user, household_id = user_household
-            service = self.service_class(db)
-
-            if self.enable_pagination:
-                entities, pagination_meta = await service.get_entities_paginated(
-                    household_id=household_id,
-                    pagination=pagination,
-                    active_only=active_only,
-                    created_by=created_by,
+            service = service_factory(db)
+            try:
+                entities = service.get_all(
+                    household_id=household_id, active_only=active_only
                 )
+                if self.enable_pagination:
+                    total = len(entities)
+                    start = pagination.offset
+                    end = start + pagination.limit
+                    page_entities = entities[start:end]
+                    from ..schemas.common import PaginationInfo
 
-                return ResponseFactory.paginated(
-                    data=entities,
-                    pagination=pagination_meta,
-                    message=f"{self.entity_name}s retrieved successfully",
-                )
-            else:
-                entities = await service.get_entities(
-                    household_id=household_id,
-                    active_only=active_only,
-                    created_by=created_by,
-                )
-
-                return ResponseFactory.success(
-                    data=entities, message=f"{self.entity_name}s retrieved successfully"
-                )
-
-    def _register_get_endpoint(self):
-        """Register GET /{id} endpoint"""
+                    pagination_info = PaginationInfo(
+                        current_page=pagination.page,
+                        page_size=pagination.page_size,
+                        total_items=total,
+                        total_pages=(total + pagination.page_size - 1)
+                        // pagination.page_size,
+                        has_next=end < total,
+                        has_previous=pagination.page > 1,
+                    )
+                    return ResponseFactory.paginated(
+                        data=page_entities,
+                        pagination=pagination_info,
+                        message=f"{self.entity_name}s retrieved successfully",
+                    )
+                else:
+                    return ResponseFactory.success(
+                        data=entities,
+                        message=f"{self.entity_name}s retrieved successfully",
+                    )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
         @self.router.get(
             "/{entity_id}",
-            response_model=SuccessResponse[self.response_schema],
+            response_model=SuccessResponse[response_schema],
             summary=f"Get {self.entity_name}",
-            description=f"Get a specific {self.entity_name_lower} by ID",
         )
-        @handle_service_errors
-        async def get_entity(
+        def get_entity(
             entity_id: int,
             user_household: tuple[User, int] = Depends(require_household_member),
             db: Session = Depends(get_db),
         ):
             current_user, household_id = user_household
-            service = self.service_class(db)
-
-            entity = await service.get_entity(household_id, entity_id)
-
-            return ResponseFactory.success(
-                data=entity, message=f"{self.entity_name} retrieved successfully"
-            )
-
-    def _register_create_endpoint(self):
-        """Register POST / endpoint"""
+            service = service_factory(db)
+            try:
+                entity = service.get_by_id(household_id, entity_id)
+                if not entity:
+                    raise HTTPException(
+                        status_code=404, detail=f"{self.entity_name} not found"
+                    )
+                return ResponseFactory.success(
+                    data=entity, message=f"{self.entity_name} retrieved successfully"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
         @self.router.post(
             "",
-            response_model=SuccessResponse[self.response_schema],
+            response_model=SuccessResponse[response_schema],
             status_code=status.HTTP_201_CREATED,
             summary=f"Create {self.entity_name}",
-            description=f"Create a new {self.entity_name_lower}",
         )
-        @handle_service_errors
-        async def create_entity(
-            entity_data: self.create_schema,
+        def create_entity(
+            entity_data: Any,
             background_tasks: BackgroundTasks,
-            user_household: tuple[User, int] = Depends(self._get_create_dependency()),
+            user_household: tuple[User, int] = Depends(create_dep),
             db: Session = Depends(get_db),
         ):
             current_user, household_id = user_household
-            service = self.service_class(db)
-
-            entity = await service.create_entity(
-                household_id=household_id,
-                user_id=current_user.id,
-                entity_data=entity_data,
-            )
-
-            # Add real-time broadcast
-            background_tasks.add_task(
-                self._broadcast_entity_event, "created", entity, household_id
-            )
-
-            return ResponseFactory.created(
-                data=entity,
-                message=getattr(
-                    ResponseMessages,
-                    f"{self.entity_name.upper()}_CREATED",
-                    f"{self.entity_name} created successfully",
-                ),
-            )
-
-    def _register_update_endpoint(self):
-        """Register PUT /{id} endpoint"""
+            service = service_factory(db)
+            try:
+                entity = service.create(
+                    household_id=household_id, user_id=current_user.id, data=entity_data
+                )
+                background_tasks.add_task(
+                    self._notify_entity_change, "created", entity, household_id
+                )
+                return ResponseFactory.created(
+                    data=entity, message=f"{self.entity_name} created successfully"
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
         @self.router.put(
             "/{entity_id}",
-            response_model=SuccessResponse[self.response_schema],
+            response_model=SuccessResponse[response_schema],
             summary=f"Update {self.entity_name}",
-            description=f"Update an existing {self.entity_name_lower}",
         )
-        @handle_service_errors
-        async def update_entity(
+        def update_entity(
             entity_id: int,
-            entity_data: self.update_schema,
+            entity_data: Any,
             background_tasks: BackgroundTasks,
-            user_household: tuple[User, int] = Depends(self._get_update_dependency()),
+            user_household: tuple[User, int] = Depends(update_dep),
             db: Session = Depends(get_db),
         ):
             current_user, household_id = user_household
-            service = self.service_class(db)
-
-            entity = await service.update_entity(
-                household_id, entity_id, entity_data, current_user.id
-            )
-
-            # Add real-time broadcast
-            background_tasks.add_task(
-                self._broadcast_entity_event, "updated", entity, household_id
-            )
-
-            return ResponseFactory.success(
-                data=entity,
-                message=getattr(
-                    ResponseMessages,
-                    f"{self.entity_name.upper()}_UPDATED",
-                    f"{self.entity_name} updated successfully",
-                ),
-            )
-
-    def _register_delete_endpoint(self):
-        """Register DELETE /{id} endpoint"""
+            service = service_factory(db)
+            try:
+                entity = service.update(
+                    household_id=household_id,
+                    entity_id=entity_id,
+                    data=entity_data,
+                    user_id=current_user.id,
+                )
+                background_tasks.add_task(
+                    self._notify_entity_change, "updated", entity, household_id
+                )
+                return ResponseFactory.success(
+                    data=entity, message=f"{self.entity_name} updated successfully"
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
         @self.router.delete(
             "/{entity_id}",
             status_code=status.HTTP_204_NO_CONTENT,
             summary=f"Delete {self.entity_name}",
-            description=f"Delete a {self.entity_name_lower}",
         )
-        @handle_service_errors
-        async def delete_entity(
+        def delete_entity(
             entity_id: int,
             background_tasks: BackgroundTasks,
-            user_household: tuple[User, int] = Depends(self._get_delete_dependency()),
+            user_household: tuple[User, int] = Depends(delete_dep),
             db: Session = Depends(get_db),
         ):
             current_user, household_id = user_household
-            service = self.service_class(db)
+            service = service_factory(db)
+            try:
+                service.delete(
+                    household_id=household_id,
+                    entity_id=entity_id,
+                    user_id=current_user.id,
+                )
+                background_tasks.add_task(
+                    self._notify_entity_change,
+                    "deleted",
+                    {"id": entity_id},
+                    household_id,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
-            await service.delete_entity(household_id, entity_id, current_user.id)
+        return self.router
 
-            # Add real-time broadcast
-            background_tasks.add_task(
-                self._broadcast_entity_event, "deleted", {"id": entity_id}, household_id
-            )
+    def _notify_entity_change(self, action: str, entity_data: Any, household_id: int):
+        """Background task for notifications"""
+        print(f"{self.entity_name} {action}: {entity_data} in household {household_id}")
 
-    async def _broadcast_entity_event(
-        self, action: str, entity_data: Any, household_id: int
+
+class CustomEndpointMixin:
+    """Mixin for adding custom endpoints to CRUD routers"""
+
+    def add_custom_endpoint(self, router: APIRouter, path: str, methods: List[str]):
+        """Add custom endpoints to existing router"""
+
+        def decorator(func):
+            for method in methods:
+                getattr(router, method.lower())(path)(func)
+            return func
+
+        return decorator
+
+
+class ConfigRouterBuilder:
+    """Builder for configuration/enum endpoints"""
+
+    def __init__(self, prefix: str, tags: List[str]):
+        self.router = APIRouter(prefix=prefix, tags=tags)
+
+    def add_enum_config(
+        self, enum_class: Type, endpoint_name: str, description: str = None
     ):
-        """Broadcast entity changes for real-time updates"""
-        # TODO: Implement WebSocket broadcasting
-        # For now, this is a placeholder for future real-time features
-        event = {
-            "type": f"{self.entity_name_lower}_{action}",
-            "data": entity_data,
-            "household_id": household_id,
-            "timestamp": "2024-01-01T00:00:00Z",  # Will use actual timestamp
-        }
-        # await broadcast_to_household(household_id, event)
-        pass
-
-
-class ConfigRouter(BaseRouterV2):
-    """Router for configuration endpoints using enums"""
-
-    def __init__(self, entity_name: str, prefix: str = None):
-        self.entity_name = entity_name
-        self.entity_name_lower = entity_name.lower()
-
-        super().__init__(
-            prefix=prefix or f"/{self.entity_name_lower}/config",
-            tags=[f"{self.entity_name_lower}-config"],
-        )
-
-    def _register_endpoints(self):
-        """Register config endpoints - will be customized per entity"""
-        pass
-
-    def add_enum_endpoint(
-        self,
-        enum_class: Type,
-        endpoint_name: str,
-        category_name: str,
-        description_map: Dict[str, str] = None,
-    ):
-        """Add a configuration endpoint for an enum"""
+        """Add enum configuration endpoint"""
 
         @self.router.get(
             f"/{endpoint_name}",
-            response_model=SuccessResponse[ConfigResponse],
-            summary=f"Get {category_name}",
-            description=f"Get available {category_name.lower()} options",
+            response_model=SuccessResponse[List[Dict[str, str]]],
+            summary=f"Get {endpoint_name} options",
+            description=description or f"Get available {endpoint_name} options",
         )
-        async def get_enum_config():
-            options = []
-            for enum_value in enum_class:
-                description = None
-                if description_map:
-                    description = description_map.get(enum_value.value)
-
-                options.append(
-                    ConfigOption(
-                        value=enum_value.value,
-                        label=enum_value.value.replace("_", " ").title(),
-                        description=description,
-                    )
-                )
-
+        def get_enum_options():
+            options = [
+                {
+                    "value": item.value,
+                    "label": item.value.replace("_", " ").title(),
+                    "description": description,
+                }
+                for item in enum_class
+            ]
             return ResponseFactory.success(
-                data=ConfigResponse(
-                    options=options, total_count=len(options), category=category_name
-                )
+                data=options, message=f"{endpoint_name} options retrieved successfully"
             )
 
+        return self
 
-class RealTimeRouter(BaseRouterV2):
-    """Router for real-time WebSocket endpoints"""
+    def build(self) -> APIRouter:
+        return self.router
 
-    def __init__(self):
-        super().__init__(prefix="/realtime", tags=["realtime"])
 
-    def _register_endpoints(self):
-        """Register WebSocket endpoints"""
+class RouterFactory:
+    """Factory for creating different types of routers"""
 
-        @self.router.websocket("/household/{household_id}")
-        async def household_websocket(
-            websocket,  # WebSocket type
-            household_id: int,
-            # TODO: Add authentication for WebSocket
-        ):
-            """WebSocket endpoint for real-time household updates"""
-            # TODO: Implement WebSocket connection management
-            pass
+    @staticmethod
+    def create_crud_router(
+        entity_name: str,
+        service_factory: Callable[[Session], BaseService],
+        create_schema: Type[CreateT],
+        update_schema: Type[UpdateT],
+        response_schema: Type[ResponseT],
+        **options,
+    ) -> APIRouter:
+        """Factory method for CRUD routers"""
+        builder = CRUDRouterBuilder(entity_name)
+        if options.get("admin_create"):
+            builder.require_admin_create = True
+        if options.get("admin_update"):
+            builder.require_admin_update = True
+        if options.get("admin_delete"):
+            builder.require_admin_delete = True
+        if "pagination" in options:
+            builder.enable_pagination = options["pagination"]
+        return builder.build_router(
+            service_factory=service_factory,
+            create_schema=create_schema,
+            update_schema=update_schema,
+            response_schema=response_schema,
+        )
+
+    @staticmethod
+    def create_config_router(prefix: str, tags: List[str]) -> ConfigRouterBuilder:
+        """Factory method for config routers"""
+        return ConfigRouterBuilder(prefix, tags)

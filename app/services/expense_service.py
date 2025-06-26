@@ -1,14 +1,13 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, desc
 from typing import Dict, List, Any, Union, Optional
-from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from ..models.expense import Expense, ExpensePayment
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
 from ..schemas.expense import ExpenseCreate, ExpenseUpdate, SplitMethod
 from dataclasses import dataclass
-from ..utils.service_helpers import calculate_splits
+from ..utils.service_helpers import calculate_splits, round_currency
 from ..utils.service_helpers import ServiceHelpers
 
 
@@ -266,12 +265,6 @@ class ExpenseService:
             self.db.rollback()
             raise ExpenseServiceError(f"Failed to delete expense: {str(e)}")
 
-    def _round_currency(self, amount: float) -> float:
-        """Round to 2 decimal places using proper currency rounding"""
-        return float(
-            Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        )
-
     def get_user_expense_summary(
         self, user_id: int, household_id: int
     ) -> Dict[str, Any]:
@@ -311,7 +304,7 @@ class ExpenseService:
                             "description": expense.description,
                             "amount_owed": user_split,
                             "amount_paid": user_payments,
-                            "remaining": self._round_currency(remaining),
+                            "remaining": round_currency(remaining),
                             "created_at": expense.created_at,
                             "category": expense.category,
                         }
@@ -341,9 +334,9 @@ class ExpenseService:
         return {
             "user_id": user_id,
             "household_id": household_id,
-            "total_owed": self._round_currency(total_owed),
-            "total_owed_to_user": self._round_currency(total_owed_to_user),
-            "net_balance": self._round_currency(total_owed_to_user - total_owed),
+            "total_owed": round_currency(total_owed),
+            "total_owed_to_user": round_currency(total_owed_to_user),
+            "net_balance": round_currency(total_owed_to_user - total_owed),
             "unpaid_expenses_count": len(unpaid_expenses),
             "unpaid_expenses": unpaid_expenses,
             "expenses_created_count": len(expenses_created),
@@ -443,7 +436,7 @@ class ExpenseService:
             payment = ExpensePayment(
                 expense_id=expense_id,
                 paid_by=paid_by,
-                amount_paid=self._round_currency(amount_paid),
+                amount_paid=round_currency(amount_paid),
                 payment_method=payment_method,
                 payment_date=datetime.utcnow(),
             )
@@ -508,7 +501,7 @@ class ExpenseService:
                         "user_name": split["user_name"],
                         "amount_owed": split["amount_owed"],
                         "amount_paid": user_payments,
-                        "remaining_owed": self._round_currency(remaining),
+                        "remaining_owed": round_currency(remaining),
                         "is_fully_paid": remaining <= 0.01,  # Tolerance for rounding
                         "calculation_method": split.get(
                             "calculation_method", "unknown"

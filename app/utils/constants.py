@@ -1,14 +1,3 @@
-class ResponseMessages:
-    """Standard API response messages"""
-
-    # Success messages
-    SUCCESS = "Success"
-    CREATED = "Created successfully"
-    UPDATED = "Updated successfully"
-    DELETED = "Deleted successfully"
-
-
-# Application Constants
 class AppConstants:
     # Pagination
     DEFAULT_PAGE_SIZE = 20
@@ -43,3 +32,38 @@ class AppConstants:
     CURRENCY_DECIMAL_PLACES = 2
     MAX_SPLIT_PERCENTAGE = 100
     MIN_SPLIT_PERCENTAGE = 0
+
+
+class TimeConstants:
+    # Dashboard intervals
+    DASHBOARD_ACTIVITY_DAYS = 7
+    HEALTH_CALCULATION_DAYS = 30
+
+    # Task calculations
+    TASK_FAIRNESS_WINDOW_DAYS = 30
+    TASK_STREAK_MAX_DAYS = 30
+    TASK_OVERDUE_GRACE_HOURS = 24
+
+    # Notification timing
+    BILL_REMINDER_DAYS = 3
+    EVENT_REMINDER_HOURS = [24, 2]  # 24 hours and 2 hours before
+    TASK_REMINDER_HOURS = [9, 18]  # 9 AM and 6 PM
+    NOTIFICATION_DUPLICATE_THRESHOLD_HOURS = 23
+
+    # Financial precision
+    CURRENCY_TOLERANCE = Decimal("0.01")
+
+    # Pagination
+    DEFAULT_HISTORY_LIMIT = 20
+    MAX_RECURRING_INSTANCES = 4
+
+    # Date validation
+    MAX_FUTURE_BOOKING_DAYS = 365
+    MAX_GUEST_STAY_DAYS = 30
+
+
+class NotificationTiming:
+    BILL_REMINDER_DAYS_BEFORE = 3
+    BILL_OVERDUE_REMINDER_HOURS = [10, 18]  # 10 AM and 6 PM daily
+    EVENT_REMINDER_HOURS_BEFORE = [24, 2]
+    TASK_OVERDUE_REMINDER_HOURS = [9, 18]

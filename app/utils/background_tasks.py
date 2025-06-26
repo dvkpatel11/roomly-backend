@@ -1,8 +1,8 @@
-import schedule
+import schedule, asyncio
 import time
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from ..database import SessionLocal
 from ..services.notification_service import NotificationService
 
@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 class BackgroundTaskScheduler:
     def __init__(self):
         self.running = False
-        self.tasks = []
-        self.last_check_time = None
-        self.last_check_status = "Not started"
+        self._shutdown_event = asyncio.Event()
 
     def schedule_notification_checks(self):
         """Schedule notification checks to run every hour"""
@@ -33,43 +31,34 @@ class BackgroundTaskScheduler:
         )
 
     def _run_notification_checks(self):
-        """Run all notification checks"""
-        self.last_check_time = datetime.utcnow()
+        """Run all notification checks with proper error handling"""
+        self.last_check_time = datetime.now(timezone.utc)
 
-        db = SessionLocal()
-        try:
-            notification_service = NotificationService(db)
-            notification_service.run_all_notification_checks()
-            logger.info("✅ Background notification check completed successfully")
-            self.last_check_status = "Success"
-        except Exception as e:
-            error_msg = f"❌ Background notification check failed: {str(e)}"
-            logger.error(error_msg)
-            self.last_check_status = f"Error: {str(e)}"
-        finally:
-            db.close()
+        with self.get_db_session() as db:
+            try:
+                notification_service = NotificationService(db)
+                notification_service.run_all_notification_checks()
+                self.last_check_status = "Success"
+            except Exception as e:
+                logger.error(f"Notification check failed: {str(e)}", exc_info=True)
+                self.last_check_status = f"Error: {str(e)}"
 
-    def start_scheduler(self):
-        """Start the background task scheduler"""
-
+    async def start_scheduler(self):
+        """Async scheduler with proper shutdown"""
         self.running = True
-        logger.info("🚀 Starting background task scheduler...")
 
-        self.schedule_notification_checks()
-
-        while self.running:
+        while self.running and not self._shutdown_event.is_set():
             try:
                 schedule.run_pending()
-                time.sleep(60)  # Check every minute
+                await asyncio.sleep(300)  # Check every 5 minutes instead
             except Exception as e:
                 logger.error(f"Scheduler error: {str(e)}")
-                time.sleep(60)  # Continue running even if there's an error
+                await asyncio.sleep(60)
 
     def stop_scheduler(self):
-        """Stop the background task scheduler"""
-
+        """Graceful shutdown"""
         self.running = False
-        logger.info("⏹️ Background task scheduler stopped")
+        self._shutdown_event.set()
 
     def run_immediate_check(self):
         """Run notification checks immediately (for testing)"""

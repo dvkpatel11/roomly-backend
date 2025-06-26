@@ -43,10 +43,6 @@ class EventApprovalResponse(GenericApprovalResponse):
 
     entity_type: str = "event"
 
-    @property
-    def event_id(self) -> int:
-        return self.entity_id
-
 
 class GuestApprovalCreate(GenericApprovalCreate):
     """Guest-specific approval (inherits from generic)"""
@@ -58,10 +54,6 @@ class GuestApprovalResponse(GenericApprovalResponse):
     """Guest-specific approval response"""
 
     entity_type: str = "guest"
-
-    @property
-    def guest_id(self) -> int:
-        return self.entity_id
 
 
 EventApprovalDetailResponse = SuccessResponse[EventApprovalResponse]
