@@ -313,17 +313,7 @@ async def trigger_all_reminders_endpoint(
 @router.get("/system/scheduler-status", response_model=Dict[str, Any])
 async def get_scheduler_status():
     """Get background task scheduler status"""
-    try:
-        scheduled_jobs_count = len(scheduler.jobs)
-    except ImportError:
-        scheduled_jobs_count = 0
-
-    status_info = {
-        "running": scheduler.running,
-        "scheduled_tasks": scheduled_jobs_count,
-        "last_check_status": "Background scheduler monitoring not fully implemented",
-    }
-
+    status_info = scheduler.get_status()
     return RouterResponse.success(data={"scheduler_status": status_info})
 
 
