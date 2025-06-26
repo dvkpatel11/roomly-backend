@@ -103,14 +103,20 @@ class RSVPStatus(str, Enum):
     MAYBE = "maybe"
 
 
-class NotificationType(str, Enum):
+class NotificationType(Enum):
     BILL_DUE = "bill_due"
-    TASK_OVERDUE = "task_overdue"
+    BILL_OVERDUE = "bill_overdue"
     TASK_ASSIGNED = "task_assigned"
+    TASK_OVERDUE = "task_overdue"
+    TASK_COMPLETED = "task_completed"
     EVENT_REMINDER = "event_reminder"
+    EVENT_CANCELLED = "event_cancelled"
     GUEST_REQUEST = "guest_request"
+    GUEST_APPROVED = "guest_approved"
+    GUEST_DENIED = "guest_denied"
     EXPENSE_ADDED = "expense_added"
     PAYMENT_RECEIVED = "payment_received"
     ANNOUNCEMENT = "announcement"
     POLL_CREATED = "poll_created"
+    MEMBER_JOINED = "member_joined"
     SYSTEM = "system"

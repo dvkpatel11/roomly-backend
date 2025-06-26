@@ -330,7 +330,7 @@ async def get_scheduler_status():
 @router.get("/config/types", response_model=Dict[str, Any])
 async def get_notification_types():
     """Get available notification types"""
-    from ..utils.constants import NotificationType
+    from ..models.enums import NotificationType
 
     types = [
         {"value": ntype.value, "label": ntype.value.replace("_", " ").title()}

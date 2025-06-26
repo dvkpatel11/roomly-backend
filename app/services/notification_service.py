@@ -9,7 +9,7 @@ from ..models.event import Event
 from ..models.user import User
 from ..utils.email import EmailService
 from ..utils.date_helpers import DateHelpers
-from ..utils.constants import NotificationType
+from ..models.enums import NotificationType
 from dataclasses import dataclass
 from ..utils.service_helpers import ServiceHelpers
 

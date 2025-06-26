@@ -1,5 +1,3 @@
-
-
 class ResponseMessages:
     """Standard API response messages"""
 
@@ -15,6 +13,7 @@ class AppConstants:
     # Pagination
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 100
+    DEFAULT_PAGE = 1
 
     # File Upload (when implemented)
     MAX_FILE_SIZE_MB = 10
