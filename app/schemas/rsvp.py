@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
-from ..models.enums import RSVPStatus
+from .enums import RSVPStatus
 from .common import SuccessResponse, PaginatedResponse
 
 

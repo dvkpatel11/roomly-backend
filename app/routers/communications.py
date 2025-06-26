@@ -7,7 +7,8 @@ from ..services.household_service import HouseholdService
 from ..schemas.announcement import (
     AnnouncementCreate,
     AnnouncementUpdate,
-    AnnouncementResponse,AnnouncementPin
+    AnnouncementResponse,
+    AnnouncementPin,
 )
 from ..schemas.household import HouseholdUpdate
 from ..schemas.poll import (
@@ -486,7 +487,7 @@ async def get_announcement_categories():
 @router.get("/config/priorities", response_model=SuccessResponse[ConfigResponse])
 async def get_priority_levels():
     """Get available priority levels"""
-    from ..models.enums import Priority
+    from ..schemas.enums import Priority
 
     options = [
         ConfigOption(

@@ -17,7 +17,7 @@ from ..utils.router_helpers import (
     RouterResponse,
 )
 from ..models.user import User
-from ..models.enums import HouseholdRole
+from ..schemas.enums import HouseholdRole
 from ..utils.service_helpers import ServiceHelpers
 
 router = APIRouter(tags=["households"])

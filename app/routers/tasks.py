@@ -27,7 +27,7 @@ from ..utils.router_helpers import (
     handle_service_errors,
 )
 from ..models.user import User
-from ..models.enums import TaskStatus
+from ..schemas.enums import TaskStatus
 from ..utils.constants import ResponseMessages
 
 router = APIRouter(tags=["tasks"])

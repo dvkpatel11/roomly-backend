@@ -1,4 +1,4 @@
-from app.models.enums import TaskStatus
+from ..schemas.enums import TaskStatus
 from sqlalchemy import (
     Column,
     Integer,
@@ -12,7 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
-from .enums import Priority
+from ..schemas.enums import Priority
 
 
 class Task(Base):

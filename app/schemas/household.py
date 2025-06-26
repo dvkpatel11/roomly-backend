@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from app.models.enums import HouseholdRole
-from .common import SuccessResponse
+from .enums import HouseholdRole
+from .common import SuccessResponse, PaginatedResponse
 
 
 class HouseholdBase(BaseModel):
@@ -68,4 +68,5 @@ class HouseholdInvitation(BaseModel):
 
 
 HouseholdDetailResponse = SuccessResponse[HouseholdResponse]
+HouseholdListResponse = PaginatedResponse[HouseholdResponse]
 HouseholdMemberListResponse = SuccessResponse[List[HouseholdMember]]

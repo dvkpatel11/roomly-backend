@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from .common import SuccessResponse
 
 
 class FinancialSummary(BaseModel):
@@ -76,3 +77,18 @@ class HouseholdHealthScore(BaseModel):
     communication_activity: int
     member_satisfaction: int
     improvement_suggestions: List[str]
+
+
+class DashboardData(BaseModel):
+    financial_summary: FinancialSummary
+    task_summary: TaskSummary
+    event_summary: EventSummary
+    guest_summary: GuestSummary
+    communication_summary: CommunicationSummary
+    notification_summary: NotificationSummary
+    quick_actions: List[QuickAction]
+    activity_feed: List[ActivityFeedItem]
+    household_health: HouseholdHealthScore
+
+
+DashboardResponse = SuccessResponse[DashboardData]

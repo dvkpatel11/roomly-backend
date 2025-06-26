@@ -1,4 +1,4 @@
-from app.models.enums import EventStatus
+from ..schemas.enums import EventStatus
 from sqlalchemy import (
     Column,
     Integer,

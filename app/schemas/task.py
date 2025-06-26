@@ -1,9 +1,9 @@
-from pydantic import BaseModel, computed_field, validator, Field
+from pydantic import BaseModel, validator, Field
 from typing import List, Optional
 from datetime import datetime
 from .common import SuccessResponse, PaginatedResponse
-from app.models.enums import TaskStatus
-from app.models.enums import Priority, RecurrencePattern
+from .enums import TaskStatus
+from .enums import Priority, RecurrencePattern
 
 
 class TaskBase(BaseModel):
@@ -62,24 +62,6 @@ class TaskResponse(TaskBase):
     completion_notes: Optional[str]
     photo_proof_url: Optional[str]
     created_at: datetime
-
-    # COMPUTED FIELD
-    @computed_field
-    @property
-    def is_overdue(self) -> bool:
-        """Check if task is overdue"""
-        if not self.due_date or self.completed:
-            return False
-        return datetime.utcnow() > self.due_date
-
-    @computed_field
-    @property
-    def days_until_due(self) -> Optional[int]:
-        """Days until due date (negative if overdue)"""
-        if not self.due_date:
-            return None
-        delta = self.due_date - datetime.utcnow()
-        return delta.days
 
     class Config:
         from_attributes = True

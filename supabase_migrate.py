@@ -5,7 +5,7 @@ Run this after updating your models and before starting the application
 
 from sqlalchemy import text
 from app.database import engine, SessionLocal, init_db
-from app.models.user import User
+from ..models.user import User
 import logging
 
 logging.basicConfig(level=logging.INFO)

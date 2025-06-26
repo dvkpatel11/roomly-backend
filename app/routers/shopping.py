@@ -13,7 +13,6 @@ from ..dependencies.permissions import require_household_member
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
-    validate_pagination,
 )
 from ..models.user import User
 from ..utils.constants import AppConstants
@@ -58,10 +57,7 @@ async def get_shopping_lists(
     """Get household shopping lists with pagination"""
     current_user, household_id = user_household
     shopping_service = ShoppingService(db)
-
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
+    
     if active_only:
         lists = shopping_service.get_active_shopping_lists(household_id=household_id)
     else:

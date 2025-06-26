@@ -1,16 +1,9 @@
-# app/dependencies/permissions.py
-
-from fastapi import Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models.user import User
-from ..services.household_service import HouseholdService, HouseholdServiceError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from ..database import get_db, get_supabase
 from ..models.user import User
-from ..services.household_service import HouseholdService
+from ..services.household_service import HouseholdService, HouseholdServiceError
 from supabase import Client
 import logging
 

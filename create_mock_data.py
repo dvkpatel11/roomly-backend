@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 # Import your models and database
 from app.database import SessionLocal, init_db
-from app.models import (
+from ..models import (
     User,
     Household,
     HouseholdMembership,
@@ -38,7 +38,7 @@ from app.models import (
     ShoppingList,
     ShoppingItem,
 )
-from app.models.enums import HouseholdRole, EventStatus, TaskStatus
+from ..schemas.enums import HouseholdRole, EventStatus, TaskStatus
 
 # Initialize Faker
 fake = Faker()

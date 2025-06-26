@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from ..models.task import Task
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
-from ..models.enums import TaskStatus, HouseholdRole
+from ..schemas.enums import TaskStatus, HouseholdRole
 from ..schemas.task import (
     TaskCreate,
     TaskUpdate,

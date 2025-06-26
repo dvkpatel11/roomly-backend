@@ -6,7 +6,7 @@ from ..models.announcement import Announcement
 from ..models.poll import Poll, PollVote
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
-from ..models.enums import HouseholdRole
+from ..schemas.enums import HouseholdRole
 from ..schemas.announcement import AnnouncementCreate, AnnouncementUpdate
 from ..schemas.poll import PollCreate, PollUpdate, PollVoteCreate
 from dataclasses import dataclass

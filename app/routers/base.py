@@ -1,6 +1,6 @@
 from typing import TypeVar, Generic, Type, List, Optional, Dict, Any, Callable
 from abc import ABC, abstractmethod
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, status, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -11,7 +11,6 @@ from ..schemas.common import (
     PaginatedResponse,
     ResponseFactory,
     PaginationParams,
-    PaginationInfo,
     ConfigResponse,
     ConfigOption,
 )

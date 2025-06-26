@@ -10,7 +10,6 @@ from ..dependencies.permissions import require_household_member
 from ..utils.router_helpers import (
     handle_service_errors,
     RouterResponse,
-    validate_pagination,
 )
 from ..models.user import User
 from ..utils.constants import AppConstants
@@ -52,10 +51,6 @@ async def get_household_guests(
 ):
     """Get household guests with filtering and pagination"""
     current_user, household_id = user_household
-
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
     guest_service = GuestService(db)
     guests = guest_service.get_household_guests(
         household_id=household_id,
@@ -186,10 +181,6 @@ async def get_my_hosted_guests(
     """Get guests hosted by current user"""
     current_user, household_id = user_household
     guest_service = GuestService(db)
-
-    # Validate pagination
-    limit, offset = validate_pagination(limit, offset, AppConstants.MAX_PAGE_SIZE)
-
     my_guests = guest_service.get_user_hosted_guests(
         user_id=current_user.id,
         household_id=household_id,
@@ -226,7 +217,7 @@ async def get_my_pending_approvals(
 @router.get("/config/relationship-types", response_model=Dict[str, Any])
 async def get_relationship_types():
     """Get available guest relationship types"""
-    from ..models.enums import GuestRelationship
+    from ..schemas.enums import GuestRelationship
 
     relationship_types = [
         {"value": rel.value, "label": rel.value.replace("_", " ").title()}

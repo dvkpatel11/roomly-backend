@@ -8,7 +8,7 @@ from ..models.guest import Guest
 from ..models.announcement import Announcement
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
-from ..models.enums import TaskStatus
+from ..schemas.enums import TaskStatus
 from .household_service import HouseholdService
 from .expense_service import ExpenseService
 from .billing_service import BillingService

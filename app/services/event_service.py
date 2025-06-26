@@ -6,7 +6,7 @@ from ..models.event import Event
 from ..models.rsvp import RSVP
 from ..models.user import User
 from ..models.household_membership import HouseholdMembership
-from ..models.enums import EventStatus, HouseholdRole
+from ..schemas.enums import EventStatus, HouseholdRole
 from ..schemas.event import EventCreate, EventUpdate
 from ..schemas.rsvp import RSVPCreate, RSVPUpdate
 from dataclasses import dataclass

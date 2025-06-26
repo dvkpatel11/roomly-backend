@@ -1,8 +1,8 @@
-from pydantic import BaseModel, validator, Field, computed_field
+from pydantic import BaseModel, validator, Field
 from typing import Optional
 from datetime import datetime
 from .common import SuccessResponse, PaginatedResponse
-from app.models.enums import EventStatus, EventType
+from .enums import EventStatus, EventType
 
 
 class EventBase(BaseModel):
@@ -51,35 +51,6 @@ class EventResponse(EventBase):
     user_rsvp_status: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime]
-
-    # COMPUTED FIELDS
-    @computed_field
-    @property
-    def is_upcoming(self) -> bool:
-        """Check if event is in the future"""
-        return self.start_date > datetime.utcnow()
-
-    @computed_field
-    @property
-    def is_today(self) -> bool:
-        """Check if event is today"""
-        now = datetime.utcnow()
-        return self.start_date.date() == now.date()
-
-    @computed_field
-    @property
-    def days_until_event(self) -> int:
-        """Days until event (negative if past)"""
-        delta = self.start_date - datetime.utcnow()
-        return delta.days
-
-    @computed_field
-    @property
-    def is_full(self) -> bool:
-        """Check if event has reached max capacity"""
-        if not self.max_attendees:
-            return False
-        return self.attendee_count >= self.max_attendees
 
     class Config:
         from_attributes = True

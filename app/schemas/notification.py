@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
-from ..models.enums import NotificationType, Priority as NotificationPriority
+from .enums import NotificationType, Priority as NotificationPriority
+from .common import SuccessResponse, PaginatedResponse
 
 
 class NotificationBase(BaseModel):
@@ -26,17 +27,6 @@ class NotificationResponse(NotificationBase):
 
     class Config:
         from_attributes = True
-
-
-class NotificationListResponse(BaseModel):
-    """Response model for notification list endpoint"""
-
-    notifications: List[NotificationResponse]
-    total_count: int
-    unread_count: int
-    limit: int
-    offset: int
-    has_more: bool
 
 
 class NotificationPreferences(BaseModel):
@@ -94,3 +84,9 @@ class NotificationFilters(BaseModel):
     notification_type: Optional[str] = Field(
         None, description="Filter by notification type"
     )
+
+
+NotificationListResponse = PaginatedResponse[NotificationResponse]
+NotificationDetailResponse = SuccessResponse[NotificationResponse]
+NotificationPreferencesResponse = SuccessResponse[NotificationPreferences]
+NotificationSummaryResponse = SuccessResponse[NotificationSummary]

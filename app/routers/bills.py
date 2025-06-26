@@ -263,7 +263,7 @@ async def get_billing_summary(
 @router.get("/config/categories", response_model=SuccessResponse[ConfigResponse])
 async def get_bill_categories():
     """Get available bill categories"""
-    from ..models.enums import ExpenseCategory
+    from ..schemas.enums import ExpenseCategory
 
     # Filter to bill-relevant categories
     bill_categories = ["utilities", "rent", "internet", "maintenance"]
@@ -288,7 +288,7 @@ async def get_bill_categories():
 @router.get("/config/split-methods", response_model=SuccessResponse[ConfigResponse])
 async def get_split_methods():
     """Get available split methods for bills"""
-    from ..models.enums import SplitMethod
+    from ..schemas.enums import SplitMethod
 
     options = [
         ConfigOption(

@@ -1,4 +1,4 @@
-from app.models.enums import HouseholdRole
+from ..schemas.enums import HouseholdRole
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from typing import List, Dict, Any, Optional

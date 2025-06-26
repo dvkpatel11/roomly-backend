@@ -3,7 +3,7 @@
 from app.dependencies.permissions import (
     require_household_member,
 )
-from app.utils.router_helpers import handle_service_errors, RouterResponse
+from ..utils.router_helpers import handle_service_errors, RouterResponse
 from fastapi import APIRouter, Depends, Query, Body, status
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
-from ..models.enums import ShoppingCategory as ShoppingItemCategory
+from .enums import ShoppingCategory as ShoppingItemCategory
 from .common import SuccessResponse, PaginatedResponse
 
 

@@ -1,4 +1,4 @@
-from app.models.guest_approval import GuestApproval
+from ..models.guest_approval import GuestApproval
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Dict, Any

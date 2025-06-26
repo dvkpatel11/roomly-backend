@@ -11,7 +11,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
-from .enums import ShoppingCategory
+from ..schemas.enums import ShoppingCategory
 
 
 class ShoppingList(Base):

@@ -40,7 +40,6 @@ class UserResponse(UserBase):
     """Public user information for API responses"""
 
     id: int
-    supabase_id: str
     avatar_url: Optional[str] = None
     is_active: bool
     email_verified: bool
